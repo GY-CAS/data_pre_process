@@ -99,25 +99,36 @@ def run_sync_task(task_id: int):
                     aws_secret_access_key=conn_info.get('secret_key')
                  )
                  
+                 # Target MinIO bucket from .env (via settings) or user input?
+                 # User input 'target_table' is now treated as 'target_bucket_name'
+                 target_bucket = target_table
+                 
+                 # Create target bucket if not exists
+                 import botocore.exceptions
+
+                 try:
+                     s3.head_bucket(Bucket=target_bucket)
+                 except botocore.exceptions.ClientError:
+                     # Bucket does not exist or no access, try to create
+                     s3.create_bucket(Bucket=target_bucket)
+                 
                  # If source_table implies a bucket
                  objects = s3.list_objects_v2(Bucket=source_table)
                  if 'Contents' in objects:
                      total_files = len(objects['Contents'])
                      processed_files = 0
-                     first_file = True
                      
                      for obj in objects['Contents']:
                          key = obj['Key']
-                         if key.endswith('.csv'):
-                             obj_body = s3.get_object(Bucket=source_table, Key=key)['Body'].read()
-                             df = pd.read_csv(io.BytesIO(obj_body))
-                             
-                             current_if_exists = "replace" if (first_file and mode == "overwrite") else "append"
-                             df.to_sql(target_table, target_url, if_exists=current_if_exists, index=False)
-                             first_file = False
-                             total_rows_synced += len(df)
+                         # Simply copy objects from source bucket to target bucket
+                         copy_source = {'Bucket': source_table, 'Key': key}
+                         s3.copy_object(CopySource=copy_source, Bucket=target_bucket, Key=key)
                          
                          processed_files += 1
+                         # For MinIO sync, row count is not applicable, maybe use file count or bytes?
+                         # Let's count files as rows for now or just 0
+                         total_rows_synced += 1 
+                         
                          task.progress = int((processed_files / total_files) * 100)
                          session.add(task)
                          session.commit()

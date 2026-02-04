@@ -17,12 +17,14 @@ export const testDataSourceConnection = (data) => api.post('/datasources/test-co
 
 export const getTasks = (params) => api.get('/tasks/', { params });
 export const createTask = (data) => api.post('/tasks/', data);
+export const deleteTasks = (ids) => api.delete('/tasks/', { data: ids });
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const runTask = (id) => api.post(`/tasks/${id}/run`);
 export const getTask = (id) => api.get(`/tasks/${id}`);
 
 // Audit
 export const getAuditLogs = (params) => api.get('/audit/', { params });
+export const deleteAuditLogs = (ids) => api.delete('/audit/', { data: ids });
 export const createAuditLog = (data) => api.post('/audit/', data);
 
 // Data Management

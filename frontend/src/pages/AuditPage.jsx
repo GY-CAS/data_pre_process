@@ -1,19 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Search, AlertTriangle } from 'lucide-react';
-import { getAuditLogs } from '../api';
+import { ShieldAlert, Search, AlertTriangle, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getAuditLogs, deleteAuditLogs } from '../api';
 
 const AuditPage = () => {
   const [logs, setLogs] = useState([]);
   const [filters, setFilters] = useState({ user_id: '', action: '' });
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState([]);
 
   const fetchLogs = async () => {
     try {
-      const params = {};
+      const params = {
+          skip: (page - 1) * pageSize,
+          limit: pageSize
+      };
       if (filters.user_id) params.user_id = filters.user_id;
       if (filters.action) params.action = filters.action;
       
       const res = await getAuditLogs(params);
-      setLogs(res.data);
+      // Support both old and new response structure just in case, but we know it's new
+      const items = res.data.items || res.data;
+      const totalCount = res.data.total || (Array.isArray(res.data) ? res.data.length : 0);
+      
+      setLogs(items);
+      setTotal(totalCount);
+      // Clear selection on refresh/page change if desired, or keep it? 
+      // Usually clear on page change is safer to avoid confusion
+      setSelectedIds([]); 
     } catch (err) {
       console.error(err);
     }
@@ -21,12 +40,44 @@ const AuditPage = () => {
 
   useEffect(() => {
     fetchLogs();
-  }, []); // Run once on mount
+  }, [page, pageSize]); // Refetch when page changes
 
   const handleSearch = (e) => {
       e.preventDefault();
+      setPage(1); // Reset to first page on search
       fetchLogs();
   }
+
+  const handleSelectAll = (e) => {
+      if (e.target.checked) {
+          setSelectedIds(logs.map(log => log.id));
+      } else {
+          setSelectedIds([]);
+      }
+  };
+
+  const handleSelectOne = (id) => {
+      if (selectedIds.includes(id)) {
+          setSelectedIds(selectedIds.filter(sid => sid !== id));
+      } else {
+          setSelectedIds([...selectedIds, id]);
+      }
+  };
+
+  const handleBulkDelete = async () => {
+      if (selectedIds.length === 0) return;
+      
+      if (confirm(`确认删除选中的 ${selectedIds.length} 条日志?`)) {
+          try {
+              await deleteAuditLogs(selectedIds);
+              fetchLogs();
+              setSelectedIds([]);
+          } catch (err) {
+              alert('删除失败');
+              console.error(err);
+          }
+      }
+  };
 
   const isWarning = (log) => {
       const warningKeywords = ['fail', 'error', 'delete', 'exception', 'warning'];
@@ -34,12 +85,23 @@ const AuditPage = () => {
       return warningKeywords.some(k => text.includes(k));
   };
 
+  const totalPages = Math.ceil(total / pageSize);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
           <ShieldAlert className="text-rose-500" /> 审计日志
         </h2>
+        
+        {selectedIds.length > 0 && (
+            <button 
+                onClick={handleBulkDelete}
+                className="bg-rose-900/50 border border-rose-800 hover:bg-rose-900 text-rose-200 px-4 py-2 rounded flex items-center gap-2 transition-colors"
+            >
+                <Trash2 size={16} /> 删除选中 ({selectedIds.length})
+            </button>
+        )}
       </div>
 
       <div className="bg-slate-900 border border-slate-700 rounded-lg p-4">
@@ -74,6 +136,14 @@ const AuditPage = () => {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-950 border-b border-slate-700 text-slate-400 text-sm uppercase tracking-wider">
+              <th className="p-4 w-10">
+                  <input 
+                    type="checkbox" 
+                    className="rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-rose-500/30"
+                    checked={logs.length > 0 && selectedIds.length === logs.length}
+                    onChange={handleSelectAll}
+                  />
+              </th>
               <th className="p-4 font-medium">时间</th>
               <th className="p-4 font-medium">用户</th>
               <th className="p-4 font-medium">行为</th>
@@ -86,6 +156,14 @@ const AuditPage = () => {
               const warning = isWarning(log);
               return (
               <tr key={log.id} className={`hover:bg-slate-800/50 transition-colors ${warning ? 'bg-rose-950/10' : ''}`}>
+                <td className="p-4">
+                    <input 
+                        type="checkbox" 
+                        className="rounded border-slate-700 bg-slate-900 text-rose-500 focus:ring-rose-500/30"
+                        checked={selectedIds.includes(log.id)}
+                        onChange={() => handleSelectOne(log.id)}
+                    />
+                </td>
                 <td className="p-4 text-slate-500 text-sm font-mono whitespace-nowrap">
                     {new Date(log.timestamp).toLocaleString()}
                 </td>
@@ -106,11 +184,37 @@ const AuditPage = () => {
             )})}
             {logs.length === 0 && (
               <tr>
-                <td colSpan="5" className="p-8 text-center text-slate-500">未找到符合条件的日志。</td>
+                <td colSpan="6" className="p-8 text-center text-slate-500">未找到符合条件的日志。</td>
               </tr>
             )}
           </tbody>
         </table>
+        
+        {/* Pagination Controls */}
+        <div className="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center justify-between">
+            <div className="text-sm text-slate-400">
+                显示 {logs.length > 0 ? (page - 1) * pageSize + 1 : 0} 到 {Math.min(page * pageSize, total)} 条，共 {total} 条
+            </div>
+            <div className="flex gap-2">
+                <button 
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <ChevronLeft size={18} />
+                </button>
+                <div className="px-2 flex items-center text-sm text-slate-300">
+                    {page} / {totalPages || 1}
+                </div>
+                <button 
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <ChevronRight size={18} />
+                </button>
+            </div>
+        </div>
       </div>
     </div>
   );

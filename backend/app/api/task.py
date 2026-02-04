@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from sqlmodel import Session, select
-from typing import List
+from sqlmodel import Session, select, func, col
+from typing import List, Dict, Any
 from backend.app.core.db import get_session, engine
 from backend.app.models.task import DataTask
 from backend.app.models.audit import AuditLog
@@ -24,6 +24,27 @@ def create_task(task: DataTask, session: Session = Depends(get_session)):
     
     return task
 
+@router.delete("/")
+def delete_tasks(ids: List[int], session: Session = Depends(get_session)):
+    if not ids:
+        return {"ok": True, "count": 0}
+        
+    statement = select(DataTask).where(col(DataTask.id).in_(ids))
+    tasks = session.exec(statement).all()
+    
+    deleted_names = []
+    for task in tasks:
+        deleted_names.append(task.name)
+        session.delete(task)
+    
+    # Audit Log
+    if deleted_names:
+        log = AuditLog(user_id="admin", action="delete_tasks", resource="batch", details=f"Deleted {len(deleted_names)} tasks: {', '.join(deleted_names)}")
+        session.add(log)
+    
+    session.commit()
+    return {"ok": True, "count": len(tasks)}
+
 @router.delete("/{task_id}")
 def delete_task(task_id: int, session: Session = Depends(get_session)):
     task = session.get(DataTask, task_id)
@@ -39,13 +60,20 @@ def delete_task(task_id: int, session: Session = Depends(get_session)):
     
     return {"ok": True}
 
-@router.get("/", response_model=List[DataTask])
+@router.get("/", response_model=Dict[str, Any])
 def read_tasks(skip: int = 0, limit: int = 100, name: str = None, session: Session = Depends(get_session)):
     query = select(DataTask)
     if name:
         query = query.where(DataTask.name.contains(name))
+    
+    # Get total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = session.exec(count_query).one()
+    
+    # Get items
     tasks = session.exec(query.offset(skip).limit(limit)).all()
-    return tasks
+    
+    return {"items": tasks, "total": total}
 
 @router.get("/{task_id}", response_model=DataTask)
 def read_task(task_id: int, session: Session = Depends(get_session)):

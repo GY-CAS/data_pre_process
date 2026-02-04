@@ -47,18 +47,21 @@ function App() {
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-emerald-500 rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20">
-              D
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 transform hover:scale-105 transition-transform duration-300">
+              <span className="text-xl">D</span>
             </div>
-            <h1 className="font-bold text-lg tracking-tight">DataProcess</h1>
+            <div className="flex flex-col">
+                <h1 className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-100 to-cyan-100">测试数据</h1>
+                <span className="text-xs text-slate-500 font-medium tracking-wider uppercase">预处理分系统</span>
+            </div>
           </div>
         </div>
         
         <nav className="flex-1 p-4 space-y-1">
-          <NavButton id="datasources" icon={Database} label="数据源" />
-          <NavButton id="tasks" icon={LayoutDashboard} label="任务" />
+          <NavButton id="datasources" icon={Database} label="数据引接" />
+          <NavButton id="tasks" icon={LayoutDashboard} label="数据同步" />
           <NavButton id="datamgmt" icon={Folder} label="数据管理" />
-          <NavButton id="audit" icon={ShieldAlert} label="审计" />
+          <NavButton id="audit" icon={ShieldAlert} label="行为预警" />
         </nav>
 
         <div className="p-4 border-t border-slate-800">
@@ -72,8 +75,8 @@ function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <header className="h-16 border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 z-10 flex items-center justify-between px-8">
-          <h2 className="font-medium text-slate-400">
-            工作区 / <span className="text-slate-100">{getTitle()}</span>
+          <h2 className="font-bold text-xl text-slate-100">
+            {getTitle()}
           </h2>
           <div className="flex items-center gap-4">
             <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">

@@ -18,10 +18,15 @@ const DataManagementPage = () => {
 
   // Pagination & Editing State
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(12); // Data cards per page
   const [total, setTotal] = useState(0);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewPageSize] = useState(20);
+  const [previewTotal, setPreviewTotal] = useState(0);
+
   const [editingRowId, setEditingRowId] = useState(null);
   const [editData, setEditData] = useState({});
+  const [selectedAssetIds, setSelectedAssetIds] = useState([]); // For bulk delete
 
   useEffect(() => {
     fetchAssets();
@@ -40,19 +45,25 @@ const DataManagementPage = () => {
           result = result.filter(a => a.type === filterType);
       }
       
-      setFilteredAssets(result);
-  }, [assets, searchTerm, filterType]);
+      setTotal(result.length);
+      // Pagination logic for assets
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      setFilteredAssets(result.slice(start, end));
+  }, [assets, searchTerm, filterType, page, pageSize]);
 
   const fetchAssets = async () => {
     try {
       const res = await getDataAssets();
       setAssets(res.data);
+      setTotal(res.data.length); // Initialize total
     } catch (err) {
       console.error(err);
     }
   };
 
   const handleDeleteAsset = async (asset) => {
+      // 1. Double check before deletion
       if (confirm(`Are you sure you want to delete ${asset.name}? This action cannot be undone.`)) {
           try {
               await deleteDataAsset(asset.name);
@@ -65,20 +76,20 @@ const DataManagementPage = () => {
 
   const handlePreview = async (asset, pageNum = 1) => {
     try {
-      const offset = (pageNum - 1) * pageSize;
-      const res = await previewData(asset.path, pageSize, offset);
+      const offset = (pageNum - 1) * previewPageSize;
+      const res = await previewData(asset.path, previewPageSize, offset);
       setPreviewContent(res.data);
-      setTotal(res.data.total || 0); // Backend now returns total
+      setPreviewTotal(res.data.total || 0); 
       setSelectedAsset(asset);
       setModalType('preview');
-      setPage(pageNum);
+      setPreviewPage(pageNum);
       setEditingRowId(null);
     } catch (err) {
       alert('Failed to load preview: ' + err.message);
     }
   };
 
-  const handlePageChange = (newPage) => {
+  const handlePreviewPageChange = (newPage) => {
       if (newPage < 1) return;
       handlePreview(selectedAsset, newPage);
   };
@@ -120,7 +131,7 @@ const DataManagementPage = () => {
       try {
           await updateTableRow(selectedAsset.path, editingRowId, editData);
           setEditingRowId(null);
-          handlePreview(selectedAsset, page); // Refresh data
+          handlePreview(selectedAsset, previewPage); // Refresh data
       } catch (err) {
           alert('Failed to update row: ' + (err.response?.data?.detail || err.message));
       }
@@ -130,7 +141,7 @@ const DataManagementPage = () => {
       if (confirm('Are you sure you want to delete this row?')) {
           try {
               await deleteTableRow(selectedAsset.path, rowId);
-              handlePreview(selectedAsset, page); // Refresh data
+              handlePreview(selectedAsset, previewPage); // Refresh data
           } catch (err) {
               alert('Failed to delete row: ' + (err.response?.data?.detail || err.message));
           }
@@ -142,6 +153,7 @@ const DataManagementPage = () => {
   };
 
   const totalPages = Math.ceil(total / pageSize);
+  const totalPreviewPages = Math.ceil(previewTotal / previewPageSize);
 
   return (
     <div className="space-y-6">
@@ -243,6 +255,32 @@ const DataManagementPage = () => {
             </div>
           )}
       </div>
+      
+      {/* Asset Pagination */}
+      <div className="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center justify-between rounded-b-lg">
+          <div className="text-sm text-slate-400">
+              显示 {filteredAssets.length > 0 ? (page - 1) * pageSize + 1 : 0} - {Math.min(page * pageSize, total)} 共 {total} 个资产
+          </div>
+          <div className="flex gap-2">
+              <button 
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                  <ChevronLeft size={18} />
+              </button>
+              <div className="px-2 flex items-center text-sm text-slate-300">
+                  {page} / {totalPages || 1}
+              </div>
+              <button 
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                  <ChevronRight size={18} />
+              </button>
+          </div>
+      </div>
 
       {/* Preview Modal */}
       <Modal isOpen={modalType === 'preview'} onClose={closeModal} title={`预览: ${selectedAsset?.name}`}>
@@ -298,24 +336,24 @@ const DataManagementPage = () => {
                 )}
             </div>
             
-            {/* Pagination */}
+            {/* Preview Pagination */}
             {previewContent && (
                 <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700 pt-4">
                     <div>
-                        显示 {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, total)} 共 {total} 行
+                        显示 {((previewPage - 1) * previewPageSize) + 1} - {Math.min(previewPage * previewPageSize, previewTotal)} 共 {previewTotal} 行
                     </div>
                     <div className="flex items-center gap-2">
                         <button 
-                            onClick={() => handlePageChange(page - 1)}
-                            disabled={page <= 1}
+                            onClick={() => handlePreviewPageChange(previewPage - 1)}
+                            disabled={previewPage <= 1}
                             className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
                         >
                             <ChevronLeft size={20} />
                         </button>
-                        <span className="font-mono bg-slate-800 px-2 py-1 rounded">{page} / {totalPages || 1}</span>
+                        <span className="font-mono bg-slate-800 px-2 py-1 rounded">{previewPage} / {totalPreviewPages || 1}</span>
                         <button 
-                            onClick={() => handlePageChange(page + 1)}
-                            disabled={page >= totalPages}
+                            onClick={() => handlePreviewPageChange(previewPage + 1)}
+                            disabled={previewPage >= totalPreviewPages}
                             className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
                         >
                             <ChevronRight size={20} />

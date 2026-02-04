@@ -99,8 +99,11 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
         inspector = inspect(engine)
         if path in inspector.get_table_names():
             with engine.connect() as conn:
+                # Use backticks for MySQL table names to handle special characters
+                safe_path = f"`{path}`"
+                
                 # Get total count
-                total = conn.execute(text(f"SELECT COUNT(*) FROM {path}")).scalar()
+                total = conn.execute(text(f"SELECT COUNT(*) FROM {safe_path}")).scalar()
                 
                 # Get data with rowid
                 # MySQL doesn't have a stable 'rowid' like SQLite, but we can use PK or just rely on offsets if no editing.
@@ -114,7 +117,7 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
                 
                 # Fetch data
                 # Construct query. We simulate '_rowid' with the PK.
-                query = text(f"SELECT {pk_col} as _rowid, * FROM {path} LIMIT {limit} OFFSET {offset}")
+                query = text(f"SELECT {pk_col} as _rowid, * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
                 try:
                     result = conn.execute(query)
                     columns = result.keys()
@@ -122,7 +125,7 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
                 except Exception as query_err:
                     # Fallback if PK assumption fails or other issue
                     print(f"Query failed: {query_err}. Trying simple select.")
-                    query = text(f"SELECT * FROM {path} LIMIT {limit} OFFSET {offset}")
+                    query = text(f"SELECT * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
                     result = conn.execute(query)
                     columns = result.keys()
                     # Generate fake rowids for display if needed, but editing won't work well
@@ -167,7 +170,8 @@ def delete_asset(name: str):
             if synced_table:
                 # Drop table from DB
                 with engine.connect() as conn:
-                    conn.execute(text(f"DROP TABLE IF EXISTS {name}"))
+                    # Use backticks for safety
+                    conn.execute(text(f"DROP TABLE IF EXISTS `{name}`"))
                     conn.commit()
                 
                 # Remove from registry
