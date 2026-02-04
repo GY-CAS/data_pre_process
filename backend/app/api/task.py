@@ -24,9 +24,27 @@ def create_task(task: DataTask, session: Session = Depends(get_session)):
     
     return task
 
+@router.delete("/{task_id}")
+def delete_task(task_id: int, session: Session = Depends(get_session)):
+    task = session.get(DataTask, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    session.delete(task)
+    
+    # Audit Log
+    log = AuditLog(user_id="admin", action="delete_task", resource=task.name)
+    session.add(log)
+    session.commit()
+    
+    return {"ok": True}
+
 @router.get("/", response_model=List[DataTask])
-def read_tasks(skip: int = 0, limit: int = 100, session: Session = Depends(get_session)):
-    tasks = session.exec(select(DataTask).offset(skip).limit(limit)).all()
+def read_tasks(skip: int = 0, limit: int = 100, name: str = None, session: Session = Depends(get_session)):
+    query = select(DataTask)
+    if name:
+        query = query.where(DataTask.name.contains(name))
+    tasks = session.exec(query.offset(skip).limit(limit)).all()
     return tasks
 
 @router.get("/{task_id}", response_model=DataTask)

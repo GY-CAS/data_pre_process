@@ -15,8 +15,9 @@ export const deleteDataSource = (id) => api.delete(`/datasources/${id}`);
 export const getDataSourceMetadata = (id) => api.get(`/datasources/${id}/metadata`);
 export const testDataSourceConnection = (data) => api.post('/datasources/test-connection', data);
 
-export const getTasks = () => api.get('/tasks/');
+export const getTasks = (params) => api.get('/tasks/', { params });
 export const createTask = (data) => api.post('/tasks/', data);
+export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const runTask = (id) => api.post(`/tasks/${id}/run`);
 export const getTask = (id) => api.get(`/tasks/${id}`);
 
@@ -26,6 +27,7 @@ export const createAuditLog = (data) => api.post('/audit/', data);
 
 // Data Management
 export const getDataAssets = () => api.get('/data-mgmt/assets');
+export const deleteDataAsset = (name) => api.delete(`/data-mgmt/${name}`);
 export const previewData = (path, limit = 20, offset = 0) => api.get('/data-mgmt/preview', { params: { path, limit, offset } });
 export const getDataStructure = (path) => api.get('/data-mgmt/structure', { params: { path } });
 export const updateTableRow = (table, rowId, data) => api.put(`/data-mgmt/table/${table}/row/${rowId}`, { row_id: rowId, data });
