@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+sqlmodel
+pyspark
+pandas
+python-multipart
+requests
+pymysql

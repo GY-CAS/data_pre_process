@@ -1,0 +1,1 @@
+{"job_name": "TestJob", "source": {"type": "csv", "path": "D:\\Home\\Desktop\\data_pre_process\\data\\test_input.csv"}, "operators": [{"type": "dedup"}], "target": {"type": "csv", "path": "D:\\Home\\Desktop\\data_pre_process\\data\\test_output", "mode": "overwrite"}}
