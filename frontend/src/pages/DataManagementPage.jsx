@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getDataAssets, previewData, getDataStructure, updateTableRow, deleteTableRow } from '../api';
+import { getDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow } from '../api';
 import { Modal } from '../components/Common';
+import { Search, Filter } from 'lucide-react';
 
 const DataManagementPage = () => {
   const [assets, setAssets] = useState([]);
+  const [filteredAssets, setFilteredAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [previewContent, setPreviewContent] = useState(null);
   const [structureContent, setStructureContent] = useState(null);
   const [modalType, setModalType] = useState(null); // 'preview' or 'structure'
   
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState('all'); // 'all', 'file', 'table'
+
   // Pagination & Editing State
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -21,6 +27,22 @@ const DataManagementPage = () => {
     fetchAssets();
   }, []);
 
+  useEffect(() => {
+      let result = assets;
+      
+      // Filter by name
+      if (searchTerm) {
+          result = result.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      }
+      
+      // Filter by type
+      if (filterType !== 'all') {
+          result = result.filter(a => a.type === filterType);
+      }
+      
+      setFilteredAssets(result);
+  }, [assets, searchTerm, filterType]);
+
   const fetchAssets = async () => {
     try {
       const res = await getDataAssets();
@@ -28,6 +50,17 @@ const DataManagementPage = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleDeleteAsset = async (asset) => {
+      if (confirm(`Are you sure you want to delete ${asset.name}? This action cannot be undone.`)) {
+          try {
+              await deleteDataAsset(asset.name);
+              fetchAssets(); // Refresh list
+          } catch (err) {
+              alert('Failed to delete asset: ' + (err.response?.data?.detail || err.message));
+          }
+      }
   };
 
   const handlePreview = async (asset, pageNum = 1) => {
@@ -118,30 +151,64 @@ const DataManagementPage = () => {
         </h2>
       </div>
 
+      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+          <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input 
+                  type="text" 
+                  placeholder="按名称搜索..." 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+              />
+          </div>
+          
+          <div className="relative w-48">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <select 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
+                  value={filterType}
+                  onChange={e => setFilterType(e.target.value)}
+              >
+                  <option value="all">所有类型</option>
+                  <option value="table">数据库表</option>
+                  <option value="file">本地文件</option>
+              </select>
+          </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {assets.map((asset, idx) => (
-              <div key={idx} className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden hover:border-purple-500/50 transition-all group">
+          {filteredAssets.map((asset, idx) => (
+              <div key={idx} className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden hover:border-purple-500/50 transition-all group relative">
                   <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
                           <div className={`p-3 rounded-lg ${asset.type === 'table' ? 'bg-purple-900/20 text-purple-400' : 'bg-slate-900 text-slate-400'}`}>
                               {asset.type === 'table' ? <Database size={24} /> : <FileText size={24} />}
                           </div>
-                          <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-500/30 text-purple-400' : 'border-slate-700 text-slate-500'}`}>
-                              {asset.type === 'table' ? '表' : '文件'}
-                          </span>
+                          <div className="flex gap-2 items-center">
+                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-500/30 text-purple-400' : 'border-slate-700 text-slate-500'}`}>
+                                  {asset.type === 'table' ? '表' : '文件'}
+                              </span>
+                              {/* Delete Button (always visible) */}
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}
+                                  className="p-1.5 rounded-full bg-slate-900/80 text-slate-400 hover:text-rose-500 hover:bg-slate-900 transition-all z-10"
+                                  title="删除资产"
+                              >
+                                  <Trash2 size={14} />
+                              </button>
+                          </div>
                       </div>
                       
                       <h3 className="text-lg font-semibold text-slate-200 mb-1 truncate" title={asset.name}>
                           {asset.name}
                       </h3>
                       <p className="text-sm text-slate-400 mb-4 line-clamp-2 h-10">
-                          {asset.type === 'table' ? '已同步的数据库表' : `位于 ${asset.path} 的导入数据资产`}
+                          从 {asset.source || '未知数据源'} 导入
                       </p>
 
                       <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mb-4">
                           <span>{asset.size}</span>
-                          <span>•</span>
-                          <span>{asset.rows || '?'} 行</span>
                       </div>
 
                       <div className="flex gap-2 pt-4 border-t border-slate-700/50">
@@ -169,10 +236,10 @@ const DataManagementPage = () => {
                   </div>
               </div>
           ))}
-          {assets.length === 0 && (
+          {filteredAssets.length === 0 && (
             <div className="col-span-full p-12 border border-dashed border-slate-700 rounded-lg text-center text-slate-500">
                 <Folder size={48} className="mx-auto mb-4 opacity-50" />
-                <p>未找到数据资产。请运行同步任务以导入数据。</p>
+                <p>未找到匹配的数据资产。</p>
             </div>
           )}
       </div>

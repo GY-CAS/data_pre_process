@@ -16,7 +16,7 @@ def create_datasource(datasource: DataSource, session: Session = Depends(get_ses
     session.refresh(datasource)
     
     # Audit Log
-    log = AuditLog(user_id="admin", action="create_datasource", resource=datasource.name, details=f"Type: {datasource.type}")
+    log = AuditLog(user_id="admin", action="create_datasource", resource=datasource.name, details=f"Type: {datasource.type}, Description: {datasource.description}")
     session.add(log)
     session.commit()
     

@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Plus, Play, AlertCircle, Loader2 } from 'lucide-react';
-import { getTasks, createTask, runTask, getDataSources, getAuditLogs, getDataSourceMetadata } from '../api';
+import { Terminal, Plus, Play, AlertCircle, Loader2, Search, Trash2, Info, X } from 'lucide-react';
+import { getTasks, createTask, deleteTask, runTask, getDataSources, getAuditLogs, getDataSourceMetadata } from '../api';
 import { Modal, StatusBadge } from '../components/Common';
 
 const TasksPage = () => {
   const [tasks, setTasks] = useState([]);
   const [sources, setSources] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
   const [taskErrors, setTaskErrors] = useState({}); // Map task_id to error message
+  const [searchName, setSearchName] = useState('');
   const [formData, setFormData] = useState({ 
     name: '', 
     task_type: 'preprocess', 
@@ -38,7 +41,9 @@ const TasksPage = () => {
 
   const fetchTasks = async () => {
     try {
-      const res = await getTasks();
+      const params = {};
+      if (searchName) params.name = searchName;
+      const res = await getTasks(params);
       setTasks(res.data);
       // Fetch error details for failed tasks
       const failedTasks = res.data.filter(t => t.status === 'failed');
@@ -76,7 +81,7 @@ const TasksPage = () => {
     fetchSources();
     const interval = setInterval(fetchTasks, 5000); // Poll every 5s
     return () => clearInterval(interval);
-  }, []);
+  }, [searchName]);
 
   // Update default config when task type changes
   useEffect(() => {
@@ -103,6 +108,23 @@ const TasksPage = () => {
     } catch (err) {
       alert('Failed to start task');
     }
+  };
+
+  const handleDelete = async (id) => {
+      if (confirm('确认删除此任务?')) {
+          try {
+              await deleteTask(id);
+              fetchTasks();
+          } catch (err) {
+              alert('删除失败');
+              console.error(err);
+          }
+      }
+  };
+
+  const openDetailModal = (task) => {
+      setSelectedTask(task);
+      setIsDetailModalOpen(true);
   };
 
   const handleSubmit = async (e) => {
@@ -155,6 +177,19 @@ const TasksPage = () => {
         </button>
       </div>
 
+      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+          <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input 
+                  type="text" 
+                  placeholder="按名称搜索..." 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                  value={searchName}
+                  onChange={e => setSearchName(e.target.value)}
+              />
+          </div>
+      </div>
+
       <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
@@ -196,14 +231,30 @@ const TasksPage = () => {
                   </div>
                 </td>
                 <td className="p-4 text-right">
-                  <button 
-                    onClick={() => handleRun(task.id)}
-                    disabled={task.status === 'running'}
-                    className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-950/50 transition-colors"
-                    title="运行任务"
-                  >
-                    <Play size={18} />
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button 
+                        onClick={() => openDetailModal(task)}
+                        className="text-slate-500 hover:text-emerald-400 p-2 rounded hover:bg-emerald-950/50 transition-colors"
+                        title="查看详情"
+                    >
+                        <Info size={18} />
+                    </button>
+                    <button 
+                        onClick={() => handleDelete(task.id)}
+                        className="text-slate-500 hover:text-rose-500 p-2 rounded hover:bg-rose-950/50 transition-colors"
+                        title="删除任务"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                    <button 
+                        onClick={() => handleRun(task.id)}
+                        disabled={task.status === 'running'}
+                        className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-950/50 transition-colors"
+                        title="运行任务"
+                    >
+                        <Play size={18} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -327,6 +378,57 @@ const TasksPage = () => {
             <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded">创建任务</button>
           </div>
         </form>
+      </Modal>
+
+      {/* Task Detail Modal */}
+      <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="任务详情">
+          {selectedTask && (
+              <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">任务名称</label>
+                          <div className="text-slate-200 font-medium">{selectedTask.name}</div>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">类型</label>
+                          <div className="text-slate-200 font-medium">{selectedTask.task_type}</div>
+                      </div>
+                  </div>
+                  
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">状态</label>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={selectedTask.status} />
+                        {selectedTask.progress > 0 && <span className="text-slate-400 text-sm">({selectedTask.progress}%)</span>}
+                      </div>
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">配置</label>
+                      <div className="bg-slate-950 rounded p-3 text-xs font-mono text-slate-400 overflow-auto max-h-48 border border-slate-800">
+                         <pre>{JSON.stringify(JSON.parse(selectedTask.config), null, 2)}</pre>
+                      </div>
+                  </div>
+
+                  {taskErrors[selectedTask.id] && (
+                      <div className="bg-rose-900/20 border border-rose-900/50 rounded p-3">
+                          <label className="block text-xs font-medium text-rose-500 uppercase tracking-wider mb-1">错误日志</label>
+                          <p className="text-rose-300 text-xs break-all">{taskErrors[selectedTask.id]}</p>
+                      </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">创建时间</label>
+                          <div className="text-slate-300 text-sm">{new Date(selectedTask.created_at).toLocaleString()}</div>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">最后更新</label>
+                          <div className="text-slate-300 text-sm">{new Date(selectedTask.updated_at).toLocaleString()}</div>
+                      </div>
+                  </div>
+              </div>
+          )}
       </Modal>
     </div>
   );

@@ -16,6 +16,7 @@ const DataSourcesPage = () => {
   
   const [formData, setFormData] = useState({ 
       name: '', 
+      description: '',
       type: 'mysql', 
       connection_details: {
           host: 'localhost',
@@ -91,6 +92,7 @@ const DataSourcesPage = () => {
       // Convert connection_details back to JSON string for storage
       const payload = {
           name: formData.name,
+          description: formData.description,
           type: formData.type,
           connection_info: JSON.stringify(formData.connection_details)
       };
@@ -100,6 +102,7 @@ const DataSourcesPage = () => {
       // Reset form
       setFormData({ 
           name: '', 
+          description: '',
           type: 'mysql', 
           connection_details: {
             host: 'localhost',
@@ -359,6 +362,16 @@ const DataSourcesPage = () => {
             />
           </div>
           <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1">数据类型描述</label>
+            <input 
+              type="text" 
+              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+              value={formData.description || ''}
+              onChange={e => setFormData({...formData, description: e.target.value})}
+              placeholder="例如: 文本数据、时序数据、图像数据"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">类型</label>
             <select 
               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
@@ -418,6 +431,11 @@ const DataSourcesPage = () => {
                           <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">类型</label>
                           <div className="text-slate-200 font-medium">{selectedSource.type}</div>
                       </div>
+                  </div>
+                  
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">描述</label>
+                      <div className="text-slate-200 font-medium">{selectedSource.description || '-'}</div>
                   </div>
                   
                   <div>
