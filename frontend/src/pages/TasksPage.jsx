@@ -61,9 +61,31 @@ const TasksPage = () => {
       setTotal(totalCount);
       setSelectedIds([]); // Clear selection on refresh
       
-      // Fetch error details for failed tasks
-      const failedTasks = items.filter(t => t.status === 'failed');
-      failedTasks.forEach(t => fetchTaskError(t.id, t.name));
+      // Clear errors for tasks that are no longer failed (e.g. retrying -> running, or succeeded)
+      setTaskErrors(prev => {
+          const newErrors = { ...prev };
+          let hasChanges = false;
+          
+          items.forEach(task => {
+              const isFailed = task.status === 'failed' || task.verification_status === 'failed';
+              // If task is NOT failed, remove error
+              if (!isFailed && newErrors[task.id]) {
+                  delete newErrors[task.id];
+                  hasChanges = true;
+              }
+              // Also, if task IS failed, but we want to ensure we fetch the latest,
+              // we don't delete it here, but `fetchTaskError` will overwrite it.
+              // However, if we want to "clear" it before fetching to show a flicker or something? No.
+              // But if the error is STALE (from previous run), and now it's running...
+              // Wait, if status is 'running', isFailed is false. So it deletes. Correct.
+          });
+          
+          return hasChanges ? newErrors : prev;
+      });
+
+      // Fetch error details for failed tasks or tasks with verification failure
+      const errorTasks = items.filter(t => t.status === 'failed' || t.verification_status === 'failed');
+      errorTasks.forEach(t => fetchTaskError(t.id, t.name));
     } catch (err) {
       console.error(err);
     }
@@ -71,15 +93,18 @@ const TasksPage = () => {
 
   const fetchTaskError = async (taskId, taskName) => {
       try {
-          // Look up audit logs for this task failure
-          const res = await getAuditLogs({ action: 'task_failed', limit: 5 });
-          // Simple matching strategy: find log where resource == taskName
-          // Response structure changed to { items: [], total: ... }
-          const logs = res.data.items || res.data; 
-          const errorLog = Array.isArray(logs) ? logs.find(l => l.resource === taskName) : null;
+          // Look up audit logs for this task failure OR verification failure
+          // Since we can't do OR query easily with simple API, we might need two calls or one broader call.
+          // Let's try to get logs for this resource.
+          const res = await getAuditLogs({ resource: taskName, limit: 10 });
+          const logs = res.data.items || res.data;
           
-          if (errorLog) {
-              setTaskErrors(prev => ({...prev, [taskId]: errorLog.details}));
+          // Prioritize verification_failed or task_failed
+          if (Array.isArray(logs)) {
+              const errorLog = logs.find(l => l.action === 'task_failed' || l.action === 'verification_failed');
+              if (errorLog) {
+                  setTaskErrors(prev => ({...prev, [taskId]: errorLog.details}));
+              }
           }
       } catch (err) {
           console.error(err);
@@ -264,7 +289,7 @@ const TasksPage = () => {
           </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm flex-1 overflow-auto">
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 overflow-y-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm uppercase tracking-wider sticky top-0 z-10">
@@ -276,7 +301,7 @@ const TasksPage = () => {
                     onChange={handleSelectAll}
                   />
               </th>
-              <th className="p-4 font-medium">任务ID</th>
+              {/* <th className="p-4 font-medium">任务ID</th> */}
               <th className="p-4 font-medium">名称</th>
               <th className="p-4 font-medium">类型</th>
               <th className="p-4 font-medium">状态</th>
@@ -294,7 +319,7 @@ const TasksPage = () => {
                         onChange={() => handleSelectOne(task.id)}
                     />
                 </td>
-                <td className="p-4 text-slate-500 font-mono">#{task.id}</td>
+                {/* <td className="p-4 text-slate-500 font-mono">#{task.id}</td> */}
                 <td className="p-4 font-medium text-slate-700">{task.name}</td>
                 <td className="p-4 text-slate-600">{task.task_type === 'sync' ? '同步' : '预处理'}</td>
                 <td className="p-4">
@@ -310,9 +335,16 @@ const TasksPage = () => {
                             </span>
                         )}
                         {task.verification_status === 'failed' && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-600 border border-rose-200">
-                                校验失败
-                            </span>
+                            <div className="relative group cursor-help">
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-600 border border-rose-200">
+                                    校验失败
+                                </span>
+                                {taskErrors[task.id] && (
+                                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-rose-50 border border-rose-200 rounded shadow-xl text-xs text-rose-600 z-10 break-words">
+                                        {taskErrors[task.id]}
+                                    </div>
+                                )}
+                            </div>
                         )}
 
                         {task.status === 'failed' && taskErrors[task.id] && (
@@ -600,11 +632,11 @@ const TasksPage = () => {
                   <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-800">
                       <div>
                           <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">创建时间</label>
-                          <div className="text-slate-300 text-sm">{new Date(selectedTask.created_at).toLocaleString()}</div>
+                          <div className="text-slate-300 text-sm">{new Date(selectedTask.created_at + 'Z').toLocaleString()}</div>
                       </div>
                       <div>
-                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">最后更新</label>
-                          <div className="text-slate-300 text-sm">{new Date(selectedTask.updated_at).toLocaleString()}</div>
+                          <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">同步时间</label>
+                          <div className="text-slate-300 text-sm">{selectedTask.updated_at ? new Date(selectedTask.updated_at + 'Z').toLocaleString() : '-'}</div>
                       </div>
                   </div>
               </div>

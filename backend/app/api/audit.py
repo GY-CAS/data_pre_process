@@ -12,6 +12,7 @@ def get_audit_logs(
     limit: int = 100,
     user_id: Optional[str] = None,
     action: Optional[str] = None,
+    resource: Optional[str] = None,
     session: Session = Depends(get_session)
 ):
     query = select(AuditLog)
@@ -19,6 +20,8 @@ def get_audit_logs(
         query = query.where(AuditLog.user_id == user_id)
     if action:
         query = query.where(AuditLog.action == action)
+    if resource:
+        query = query.where(AuditLog.resource == resource)
     
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())

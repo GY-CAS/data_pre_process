@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow } from '../api';
+import { getDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow, downloadDataAsset } from '../api';
 import { Modal } from '../components/Common';
-import { Search, Filter } from 'lucide-react';
+import { Search, Filter, MoreVertical } from 'lucide-react';
 
 const DataManagementPage = () => {
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [previewContent, setPreviewContent] = useState(null);
+  const [minioLinks, setMinioLinks] = useState(null);
   const [structureContent, setStructureContent] = useState(null);
-  const [modalType, setModalType] = useState(null); // 'preview' or 'structure'
+  const [modalType, setModalType] = useState(null); // 'preview' or 'structure' or 'export'
+  const [exportFormat, setExportFormat] = useState('csv');
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -105,13 +107,88 @@ const DataManagementPage = () => {
     }
   };
   
-  const handleExport = (asset) => {
-      alert(`Download link generated for ${asset.name}: /api/download/${asset.name}`);
+  const handleExportClick = async (asset) => {
+      setSelectedAsset(asset);
+      
+      // If it's a MinIO asset (based on type/source inference or if we stored source_type in asset list),
+      // we should skip the format selection. 
+      // Current 'getDataAssets' returns { name, type, size, source, path }.
+      // 'source' is the source_type (mysql, clickhouse, minio).
+      
+      if (asset.source === 'minio') {
+          // Trigger export directly for MinIO to get links
+          // We can reuse handleExportConfirm logic but need to set state properly
+          // Or just call API here.
+          try {
+              const res = await downloadDataAsset(asset.name, 'minio'); // format ignored for minio
+              
+              if (res.headers['content-type']?.includes('application/json')) {
+                   const text = await res.data.text();
+                   const json = JSON.parse(text);
+                   if (json.status === 'minio_links') {
+                       setModalType('minio_links');
+                       setMinioLinks(json.links);
+                       return;
+                   }
+              }
+          } catch (err) {
+              alert('Failed to get download links: ' + err.message);
+          }
+      } else {
+          setModalType('export');
+      }
+  };
+
+  const handleExportConfirm = async () => {
+      if (!selectedAsset) return;
+      
+      try {
+          const res = await downloadDataAsset(selectedAsset.name, exportFormat);
+          
+          // Check if it's MinIO links (JSON) or Blob
+          if (res.headers['content-type']?.includes('application/json')) {
+              // It's a JSON response with links? 
+              // Wait, axios response.data is Blob if responseType is blob.
+              // If backend returns JSON, blob will contain text.
+              const text = await res.data.text();
+              try {
+                  const json = JSON.parse(text);
+                  if (json.status === 'minio_links') {
+                      // Show links in a new modal or alert
+                      setModalType('minio_links');
+                      setMinioLinks(json.links); // Reuse previewContent for links
+                      return;
+                  }
+              } catch (e) {
+                  // Not JSON, proceed as file
+              }
+          }
+          
+          // It's a file download
+          const url = window.URL.createObjectURL(new Blob([res.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          // Try to get filename from header
+          const contentDisposition = res.headers['content-disposition'];
+          let filename = `${selectedAsset.name}.${exportFormat === 'excel' ? 'xlsx' : exportFormat}`;
+          if (contentDisposition) {
+              const match = contentDisposition.match(/filename=(.+)/);
+              if (match) filename = match[1];
+          }
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setModalType(null);
+      } catch (err) {
+          alert('Export failed: ' + err.message);
+      }
   };
 
   const closeModal = () => {
       setModalType(null);
       setPreviewContent(null);
+      setMinioLinks(null);
       setStructureContent(null);
       setEditingRowId(null);
   };
@@ -128,6 +205,12 @@ const DataManagementPage = () => {
   };
 
   const handleSaveClick = async () => {
+      // If MinIO, editing is not supported yet (it's object storage metadata)
+      if (selectedAsset.source === 'minio') {
+          alert("MinIO 资产暂不支持编辑元数据");
+          return;
+      }
+
       try {
           await updateTableRow(selectedAsset.path, editingRowId, editData);
           setEditingRowId(null);
@@ -138,6 +221,16 @@ const DataManagementPage = () => {
   };
 
   const handleDeleteClick = async (rowId) => {
+      // If MinIO, deleting objects is possible but maybe restricted in this view?
+      // Let's block for now to be safe or implement later.
+      if (selectedAsset.source === 'minio') {
+          // rowId is ETag, we need Key to delete.
+          // The preview data has 'Key'.
+          // But rowId might not be enough if we don't look up the row.
+          alert("MinIO 资产暂不支持在此处删除对象");
+          return;
+      }
+
       if (confirm('Are you sure you want to delete this row?')) {
           try {
               await deleteTableRow(selectedAsset.path, rowId);
@@ -210,7 +303,7 @@ const DataManagementPage = () => {
                           </div>
                           <div className="flex gap-2 items-center">
                               <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
-                                  {asset.type === 'table' ? '表' : '文件'}
+                                  {asset.source || asset.type}
                               </span>
                               {/* Delete Button (always visible) */}
                               <button 
@@ -249,7 +342,7 @@ const DataManagementPage = () => {
                               <TableIcon size={16} />
                           </button>
                           <button 
-                            onClick={() => handleExport(asset)}
+                            onClick={() => handleExportClick(asset)}
                             className="p-2 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
                             title="导出"
                           >
@@ -338,7 +431,7 @@ const DataManagementPage = () => {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 text-slate-300 shadow-sm">
-                                {selectedAsset?.type === 'table' && <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>}
+                                {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>}
                                 {previewContent.columns.filter(c => c !== '_rowid').map(col => (
                                     <th key={col} className="p-2 border border-slate-700 bg-slate-800 whitespace-nowrap">{col}</th>
                                 ))}
@@ -347,7 +440,7 @@ const DataManagementPage = () => {
                         <tbody>
                             {previewContent.data.map((row, i) => (
                                 <tr key={i} className="hover:bg-slate-800/50 group">
-                                    {selectedAsset?.type === 'table' && (
+                                    {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && (
                                         <td className="p-2 border border-slate-700 whitespace-nowrap">
                                             {editingRowId === row._rowid ? (
                                                 <div className="flex gap-2">
@@ -439,6 +532,79 @@ const DataManagementPage = () => {
             )}
         </div>
       </Modal>
+      
+      {/* Export Modal */}
+      <Modal isOpen={modalType === 'export'} onClose={closeModal} title={`导出: ${selectedAsset?.name}`}>
+          <div className="p-4 space-y-4">
+              <p className="text-sm text-slate-600">请选择导出格式:</p>
+              <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="format" 
+                        value="csv" 
+                        checked={exportFormat === 'csv'} 
+                        onChange={e => setExportFormat(e.target.value)}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">CSV</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="format" 
+                        value="excel" 
+                        checked={exportFormat === 'excel'} 
+                        onChange={e => setExportFormat(e.target.value)}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">Excel (XLSX)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="format" 
+                        value="json" 
+                        checked={exportFormat === 'json'} 
+                        onChange={e => setExportFormat(e.target.value)}
+                        className="text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">JSON</span>
+                  </label>
+              </div>
+              <div className="flex justify-end pt-4">
+                  <button 
+                      onClick={handleExportConfirm}
+                      className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-500 transition-colors text-sm"
+                  >
+                      确认导出
+                  </button>
+              </div>
+          </div>
+      </Modal>
+
+      {/* MinIO Links Modal */}
+      <Modal isOpen={modalType === 'minio_links'} onClose={closeModal} title={`下载文件: ${selectedAsset?.name}`}>
+           <div className="p-4 overflow-auto max-h-[60vh]">
+               <p className="text-sm text-slate-500 mb-4">以下是 Bucket 中的文件下载链接 (有效期5分钟):</p>
+               <ul className="space-y-2">
+                   {minioLinks && Array.isArray(minioLinks) ? minioLinks.map((item, idx) => (
+                       <li key={idx} className="flex items-center justify-between p-2 bg-slate-50 rounded border border-slate-100">
+                           <span className="text-sm font-mono text-slate-700 truncate max-w-[300px]" title={item.key}>{item.key}</span>
+                           <a 
+                             href={item.url} 
+                             target="_blank" 
+                             rel="noreferrer"
+                             className="text-xs text-blue-600 hover:text-blue-500 hover:underline flex items-center gap-1"
+                           >
+                               <Download size={12} /> 下载
+                           </a>
+                       </li>
+                   )) : <p className="text-sm text-slate-400">无文件或加载失败。</p>}
+               </ul>
+           </div>
+      </Modal>
+
     </div>
   );
 };

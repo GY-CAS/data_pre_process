@@ -325,7 +325,7 @@ const DataSourcesPage = () => {
           </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-y-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sources.map(source => (
           <div key={source.id} className="bg-white border border-slate-200 rounded-lg p-5 hover:border-blue-500 hover:shadow-md transition-all relative group">

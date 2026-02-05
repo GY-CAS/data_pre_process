@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     CK_PORT: int = 9000
     CK_USER: str = "default"
     CK_PASSWORD: str = ""
+
+    # MinIO Configuration
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ROOT_USER: str = "minioadmin"
+    MINIO_ROOT_PASSWORD: str = "minioadmin"
+    
     # CK_DB is not in env, defaulting to 'default' or handled dynamically?
     # User env has CK_host, CK_port, CK_user, CK_password.
     # Note: env file has lowercase keys CK_host, etc. Pydantic reads case-insensitive if configured, 

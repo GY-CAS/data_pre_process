@@ -120,28 +120,6 @@ def get_datasource_metadata(datasource_id: int, session: Session = Depends(get_s
                  # This is a bit guessy.
                  pass
 
-        elif db_type == "mysql":
-            try:
-                from sqlalchemy import create_engine, text
-                user = connection_info.get("user")
-                password = connection_info.get("password")
-                host = connection_info.get("host")
-                port = connection_info.get("port", 3306)
-                database = connection_info.get("database")
-                
-                if not all([user, host, database]):
-                     return {"status": "error", "message": "Missing required fields (user, host, database)"}
-
-                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-                engine = create_engine(url)
-                with engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                return {"status": "success", "message": "Successfully connected to MySQL"}
-            except ImportError:
-                 return {"status": "error", "message": "MySQL driver (pymysql) not installed on server."}
-            except Exception as e:
-                return {"status": "error", "message": f"Connection failed: {str(e)}"}
-
         elif db_type == "minio":
             import boto3
             # MinIO usually requires endpoint, access_key, secret_key
@@ -201,6 +179,29 @@ def test_connection(connection_info: dict):
                 return {"status": "success", "message": "Successfully connected to ClickHouse"}
             except ImportError:
                  return {"status": "error", "message": "clickhouse-driver not installed on server."}
+            except Exception as e:
+                return {"status": "error", "message": f"Connection failed: {str(e)}"}
+
+        elif db_type == "mysql":
+            try:
+                from sqlalchemy import create_engine, text
+                user = connection_info.get("user")
+                password = connection_info.get("password")
+                host = connection_info.get("host")
+                port = connection_info.get("port", 3306)
+                database = connection_info.get("database")
+                
+                # Check for required fields. Database might be optional for some tests but generally required for URL construction.
+                if not all([host]):
+                     return {"status": "error", "message": "Missing required fields (host)"}
+
+                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}" if database else f"mysql+pymysql://{user}:{password}@{host}:{port}"
+                engine = create_engine(url)
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                return {"status": "success", "message": "Successfully connected to MySQL"}
+            except ImportError:
+                 return {"status": "error", "message": "MySQL driver (pymysql) not installed on server."}
             except Exception as e:
                 return {"status": "error", "message": f"Connection failed: {str(e)}"}
 

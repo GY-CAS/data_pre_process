@@ -12,4 +12,4 @@ class DataTask(SQLModel, table=True):
     progress: int = Field(default=0)
     spark_app_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default=None) # Initially None until run

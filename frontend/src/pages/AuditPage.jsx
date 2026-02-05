@@ -143,7 +143,7 @@ const AuditPage = () => {
           </form>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm flex-1 overflow-auto">
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm flex-1 overflow-y-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm uppercase tracking-wider sticky top-0 z-10">

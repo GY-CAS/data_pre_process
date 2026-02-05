@@ -11,6 +11,8 @@ import traceback
 import io
 from datetime import datetime
 
+from backend.app.models.audit import AuditLog
+
 def run_sync_task(task_id: int):
     with Session(engine) as session:
         task = session.get(DataTask, task_id)
@@ -102,7 +104,8 @@ def run_sync_task(task_id: int):
                         target_count = t_conn.execute(target_cnt_query).scalar()
                     
                     if mode == "overwrite":
-                        if source_count != target_count:
+                        # Convert to float/int to handle potential type mismatch (e.g. 1.0 vs 1)
+                        if float(source_count) != float(target_count):
                             raise Exception(f"Rows mismatch: Source({source_count}) != Target({target_count})")
                         
                         # Optional: Advanced Checksum (CRC32)
@@ -125,7 +128,15 @@ def run_sync_task(task_id: int):
                                 tgt_checksum = t_conn.execute(text(checksum_sql.format(table=target_table))).scalar()
                             
                             # Handle potential None/Decimal types
-                            if str(src_checksum) != str(tgt_checksum):
+                            # Convert to str and strip possible decimal points if they are effectively integers (e.g. "1.0" vs "1")
+                            s_chk = str(src_checksum)
+                            t_chk = str(tgt_checksum)
+                            
+                            # Simple normalization: if ends with .0, remove it
+                            if s_chk.endswith('.0'): s_chk = s_chk[:-2]
+                            if t_chk.endswith('.0'): t_chk = t_chk[:-2]
+
+                            if s_chk != t_chk:
                                 raise Exception(f"Checksum mismatch: Source({src_checksum}) != Target({tgt_checksum})")
 
                     elif mode == "append":
@@ -137,6 +148,9 @@ def run_sync_task(task_id: int):
                 except Exception as verify_err:
                     print(f"Verification Error: {verify_err}")
                     task.verification_status = "failed"
+                    # Log verification failure to audit logs so frontend can display it
+                    log = AuditLog(user_id="system", action="verification_failed", resource=task.name, details=str(verify_err))
+                    session.add(log)
                     # We do NOT fail the task here, just mark verification as failed
                     # raise verify_err # Propagate error to fail task
 
@@ -220,8 +234,10 @@ def run_sync_task(task_id: int):
                              
                      task.verification_status = "success"
                  except Exception as verify_err:
-                     print(f"ClickHouse Verification Error: {verify_err}")
-                     task.verification_status = "failed"
+                    print(f"ClickHouse Verification Error: {verify_err}")
+                    task.verification_status = "failed"
+                    log = AuditLog(user_id="system", action="verification_failed", resource=task.name, details=str(verify_err))
+                    session.add(log)
                  
             elif datasource.type == "minio":
                  import boto3
@@ -282,11 +298,13 @@ def run_sync_task(task_id: int):
                              # Or just let it continue?
                              
                          except Exception as verify_err:
-                             print(f"MinIO Verification Error for {key}: {verify_err}")
-                             # We should mark task as verification failed but maybe continue?
-                             # Or fail the whole verification?
-                             task.verification_status = "failed"
-                             # raise verify_err 
+                            print(f"MinIO Verification Error for {key}: {verify_err}")
+                            # We should mark task as verification failed but maybe continue?
+                            # Or fail the whole verification?
+                            task.verification_status = "failed"
+                            log = AuditLog(user_id="system", action="verification_failed", resource=task.name, details=str(verify_err))
+                            session.add(log)
+                            # raise verify_err 
                              
                          task.progress = int((processed_files / total_files) * 100)
                          session.add(task)
