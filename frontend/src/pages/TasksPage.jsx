@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
+<<<<<<< HEAD
 import { LayoutDashboard, Plus, Play, AlertCircle, Loader2, Search, Trash2, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTasks, createTask, deleteTask, deleteTasks, runTask, getDataSources, getAuditLogs, getDataSourceMetadata } from '../api';
+=======
+import { Terminal, Plus, Play, AlertCircle, Loader2, Search, Trash2, Info, X } from 'lucide-react';
+import { getTasks, createTask, deleteTask, runTask, getDataSources, getAuditLogs, getDataSourceMetadata } from '../api';
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
 import { Modal, StatusBadge } from '../components/Common';
 
 const TasksPage = () => {
@@ -47,6 +52,7 @@ const TasksPage = () => {
 
   const fetchTasks = async () => {
     try {
+<<<<<<< HEAD
       const params = {
           skip: (page - 1) * pageSize,
           limit: pageSize
@@ -61,6 +67,12 @@ const TasksPage = () => {
       setTotal(totalCount);
       setSelectedIds([]); // Clear selection on refresh
       
+=======
+      const params = {};
+      if (searchName) params.name = searchName;
+      const res = await getTasks(params);
+      setTasks(res.data);
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
       // Fetch error details for failed tasks
       const failedTasks = items.filter(t => t.status === 'failed');
       failedTasks.forEach(t => fetchTaskError(t.id, t.name));
@@ -100,7 +112,11 @@ const TasksPage = () => {
     fetchSources();
     const interval = setInterval(fetchTasks, 5000); // Poll every 5s
     return () => clearInterval(interval);
+<<<<<<< HEAD
   }, [searchName, page, pageSize]); // Add pagination dependencies
+=======
+  }, [searchName]);
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
 
   // Update default config when task type changes
   useEffect(() => {
@@ -141,6 +157,7 @@ const TasksPage = () => {
       }
   };
 
+<<<<<<< HEAD
   const handleBulkDelete = async () => {
       if (selectedIds.length === 0) return;
       
@@ -171,6 +188,8 @@ const TasksPage = () => {
       }
   };
 
+=======
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
   const openDetailModal = (task) => {
       setSelectedTask(task);
       setIsDetailModalOpen(true);
@@ -248,6 +267,7 @@ const TasksPage = () => {
         </div>
       </div>
 
+<<<<<<< HEAD
       <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
           <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -260,11 +280,26 @@ const TasksPage = () => {
                       setSearchName(e.target.value);
                       setPage(1); // Reset page on search
                   }}
+=======
+      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+          <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input 
+                  type="text" 
+                  placeholder="按名称搜索..." 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                  value={searchName}
+                  onChange={e => setSearchName(e.target.value)}
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
               />
           </div>
       </div>
 
+<<<<<<< HEAD
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm flex-1 overflow-auto">
+=======
+      <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm uppercase tracking-wider sticky top-0 z-10">
@@ -326,14 +361,22 @@ const TasksPage = () => {
                   <div className="flex justify-end gap-2">
                     <button 
                         onClick={() => openDetailModal(task)}
+<<<<<<< HEAD
                         className="text-slate-400 hover:text-emerald-500 p-2 rounded hover:bg-emerald-50 transition-colors"
+=======
+                        className="text-slate-500 hover:text-emerald-400 p-2 rounded hover:bg-emerald-950/50 transition-colors"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                         title="查看详情"
                     >
                         <Info size={18} />
                     </button>
                     <button 
                         onClick={() => handleDelete(task.id)}
+<<<<<<< HEAD
                         className="text-slate-400 hover:text-rose-500 p-2 rounded hover:bg-rose-50 transition-colors"
+=======
+                        className="text-slate-500 hover:text-rose-500 p-2 rounded hover:bg-rose-950/50 transition-colors"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                         title="删除任务"
                     >
                         <Trash2 size={18} />
@@ -341,7 +384,11 @@ const TasksPage = () => {
                     <button 
                         onClick={() => handleRun(task.id)}
                         disabled={task.status === 'running'}
+<<<<<<< HEAD
                         className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-50 transition-colors"
+=======
+                        className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-950/50 transition-colors"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                         title="运行任务"
                     >
                         <Play size={18} />

@@ -2,3 +2,7 @@
 /data
 /database.db  
 /system_data.db 
+# 忽略所有 __pycache__ 文件夹（推荐，匹配项目中所有目录下的 __pycache__）
+__pycache__/
+# 也可以直接忽略所有 .pyc 字节码文件（补充方案，防止个别 .pyc 不在 __pycache__ 中）
+*.pyc
