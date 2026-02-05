@@ -34,5 +34,10 @@ export const previewData = (path, limit = 20, offset = 0) => api.get('/data-mgmt
 export const getDataStructure = (path) => api.get('/data-mgmt/structure', { params: { path } });
 export const updateTableRow = (table, rowId, data) => api.put(`/data-mgmt/table/${table}/row/${rowId}`, { row_id: rowId, data });
 export const deleteTableRow = (table, rowId) => api.delete(`/data-mgmt/table/${table}/row/${rowId}`);
+export const downloadDataAsset = (name, format = 'csv') => api.get(`/data-mgmt/download/${name}`, { params: { format }, responseType: 'blob' });
+// MinIO download needs special handling if it returns JSON with links, but if it returns blob it's fine.
+// The backend returns JSON for MinIO, Blob for others. 
+// We might need to handle responseType dynamically or parse blob if JSON?
+// Let's use 'blob' but check if type is json in caller.
 
 export default api;

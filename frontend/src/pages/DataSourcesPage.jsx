@@ -23,9 +23,30 @@ const DataSourcesPage = () => {
           port: 3306,
           user: 'root',
           password: '',
-          database: ''
+          database: '',
+          // Common fields, defaults will be adjusted on type change
       }
   });
+
+  // Effect to reset/set default ports when type changes
+  useEffect(() => {
+     if (formData.type === 'clickhouse') {
+         setFormData(prev => ({
+             ...prev,
+             connection_details: { ...prev.connection_details, port: 9000, user: 'default', database: 'default' }
+         }));
+     } else if (formData.type === 'mysql') {
+         setFormData(prev => ({
+             ...prev,
+             connection_details: { ...prev.connection_details, port: 3306, user: 'root', database: '' }
+         }));
+     } else if (formData.type === 'minio') {
+         setFormData(prev => ({
+            ...prev,
+            connection_details: { ...prev.connection_details, endpoint: 'http://localhost:9000', access_key: 'minioadmin', secret_key: 'minioadmin' }
+         }));
+     }
+  }, [formData.type]);
   const [testStatus, setTestStatus] = useState(null); // null, 'testing', 'success', 'error'
   const [testMessage, setTestMessage] = useState('');
 
@@ -155,7 +176,7 @@ const DataSourcesPage = () => {
           );
       }
 
-      if (type === 'mysql') {
+      if (type === 'mysql' || type === 'clickhouse') {
           return (
               <>
                 <div className="grid grid-cols-2 gap-4">
@@ -166,6 +187,7 @@ const DataSourcesPage = () => {
                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                         value={connection_details.host}
                         onChange={e => handleInputChange('host', e.target.value)}
+                        placeholder={type === 'clickhouse' ? "localhost" : "localhost"}
                         />
                     </div>
                     <div>
@@ -175,6 +197,7 @@ const DataSourcesPage = () => {
                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                         value={connection_details.port}
                         onChange={e => handleInputChange('port', parseInt(e.target.value))}
+                        placeholder={type === 'clickhouse' ? "9000" : "3306"}
                         />
                     </div>
                 </div>
@@ -185,6 +208,7 @@ const DataSourcesPage = () => {
                     className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                     value={connection_details.database}
                     onChange={e => handleInputChange('database', e.target.value)}
+                    placeholder={type === 'clickhouse' ? "default" : "test_db"}
                     />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -195,6 +219,7 @@ const DataSourcesPage = () => {
                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                         value={connection_details.user}
                         onChange={e => handleInputChange('user', e.target.value)}
+                        placeholder="root"
                         />
                     </div>
                     <div>
@@ -300,7 +325,7 @@ const DataSourcesPage = () => {
           </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-y-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sources.map(source => (
           <div key={source.id} className="bg-white border border-slate-200 rounded-lg p-5 hover:border-blue-500 hover:shadow-md transition-all relative group">
@@ -434,6 +459,7 @@ const DataSourcesPage = () => {
               onChange={e => setFormData({...formData, type: e.target.value})}
             >
               <option value="mysql">MySQL</option>
+              <option value="clickhouse">ClickHouse</option>
               <option value="minio">MinIO (S3)</option>
               <option value="csv">CSV File</option>
             </select>
@@ -445,14 +471,18 @@ const DataSourcesPage = () => {
 
           {/* Test Connection Status */}
           {testStatus && (
-              <div className={`mt-2 p-3 rounded text-sm flex items-center gap-2 ${
+              <div className={`mt-2 p-3 rounded text-sm flex items-start gap-2 max-h-32 overflow-y-auto ${
                   testStatus === 'success' ? 'bg-emerald-900/30 text-emerald-400' : 
                   testStatus === 'error' ? 'bg-rose-900/30 text-rose-400' : 'bg-blue-900/30 text-blue-400'
               }`}>
-                  {testStatus === 'testing' && <Loader2 size={16} className="animate-spin" />}
-                  {testStatus === 'success' && <CheckCircle size={16} />}
-                  {testStatus === 'error' && <AlertTriangle size={16} />}
-                  {testMessage || (testStatus === 'testing' ? 'Testing connection...' : '')}
+                  <div className="shrink-0 mt-0.5">
+                    {testStatus === 'testing' && <Loader2 size={16} className="animate-spin" />}
+                    {testStatus === 'success' && <CheckCircle size={16} />}
+                    {testStatus === 'error' && <AlertTriangle size={16} />}
+                  </div>
+                  <div className="break-all whitespace-pre-wrap">
+                    {testMessage || (testStatus === 'testing' ? 'Testing connection...' : '')}
+                  </div>
               </div>
           )}
 

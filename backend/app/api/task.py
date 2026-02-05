@@ -115,6 +115,8 @@ def run_task(task_id: int, background_tasks: BackgroundTasks, session: Session =
     
     task.status = "running"
     task.progress = 0
+    from datetime import datetime
+    task.updated_at = datetime.utcnow() # Update timestamp on run
     session.add(task)
     
     # Audit Log for start

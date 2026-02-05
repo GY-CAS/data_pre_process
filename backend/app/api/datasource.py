@@ -162,6 +162,26 @@ def test_connection(connection_info: dict):
             else:
                  return {"status": "error", "message": f"Path does not exist or is not a file: {path}"}
 
+        elif db_type == "clickhouse":
+            try:
+                from clickhouse_driver import Client
+                user = connection_info.get("user")
+                password = connection_info.get("password")
+                host = connection_info.get("host")
+                port = connection_info.get("port", 9000)
+                database = connection_info.get("database")
+                
+                if not all([host]):
+                     return {"status": "error", "message": "Missing required fields (host)"}
+
+                client = Client(host=host, port=port, user=user, password=password, database=database)
+                client.execute('SELECT 1')
+                return {"status": "success", "message": "Successfully connected to ClickHouse"}
+            except ImportError:
+                 return {"status": "error", "message": "clickhouse-driver not installed on server."}
+            except Exception as e:
+                return {"status": "error", "message": f"Connection failed: {str(e)}"}
+
         elif db_type == "mysql":
             try:
                 from sqlalchemy import create_engine, text
@@ -171,10 +191,11 @@ def test_connection(connection_info: dict):
                 port = connection_info.get("port", 3306)
                 database = connection_info.get("database")
                 
-                if not all([user, host, database]):
-                     return {"status": "error", "message": "Missing required fields (user, host, database)"}
+                # Check for required fields. Database might be optional for some tests but generally required for URL construction.
+                if not all([host]):
+                     return {"status": "error", "message": "Missing required fields (host)"}
 
-                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}" if database else f"mysql+pymysql://{user}:{password}@{host}:{port}"
                 engine = create_engine(url)
                 with engine.connect() as conn:
                     conn.execute(text("SELECT 1"))

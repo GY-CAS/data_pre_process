@@ -6,3 +6,5 @@ pandas
 python-multipart
 requests
 pymysql
+boto3
+clickhouse-driver
