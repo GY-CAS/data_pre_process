@@ -15,6 +15,7 @@ class DataAsset(BaseModel):
     type: str  # file, table
     path: str
     size: str
+    source: Optional[str] = None
     rows: Optional[int] = 0
 
 class RowUpdate(BaseModel):
@@ -41,6 +42,7 @@ def get_assets(session: Session = Depends(get_session)):
                         type="file",
                         path=path,
                         size=f"{size / 1024:.2f} KB",
+                        source="Local File",
                         rows=0 
                     ))
     
@@ -51,7 +53,8 @@ def get_assets(session: Session = Depends(get_session)):
             name=table.table_name,
             type="table",
             path=table.table_name, 
-            size=f"Source: {table.source_name}", # Repurpose size field for source info
+            size="-", # Size unknown for DB tables
+            source=table.source_name,
             rows=table.row_count
         ))
         
@@ -96,8 +99,11 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
         inspector = inspect(engine)
         if path in inspector.get_table_names():
             with engine.connect() as conn:
+                # Use backticks for MySQL table names to handle special characters
+                safe_path = f"`{path}`"
+                
                 # Get total count
-                total = conn.execute(text(f"SELECT COUNT(*) FROM {path}")).scalar()
+                total = conn.execute(text(f"SELECT COUNT(*) FROM {safe_path}")).scalar()
                 
                 # Get data with rowid
                 # MySQL doesn't have a stable 'rowid' like SQLite, but we can use PK or just rely on offsets if no editing.
@@ -111,7 +117,7 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
                 
                 # Fetch data
                 # Construct query. We simulate '_rowid' with the PK.
-                query = text(f"SELECT {pk_col} as _rowid, * FROM {path} LIMIT {limit} OFFSET {offset}")
+                query = text(f"SELECT {pk_col} as _rowid, * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
                 try:
                     result = conn.execute(query)
                     columns = result.keys()
@@ -119,7 +125,7 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
                 except Exception as query_err:
                     # Fallback if PK assumption fails or other issue
                     print(f"Query failed: {query_err}. Trying simple select.")
-                    query = text(f"SELECT * FROM {path} LIMIT {limit} OFFSET {offset}")
+                    query = text(f"SELECT * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
                     result = conn.execute(query)
                     columns = result.keys()
                     # Generate fake rowids for display if needed, but editing won't work well
@@ -136,6 +142,48 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
                 }
     except Exception as e:
         print(f"DB Error: {e}")
+
+    raise HTTPException(status_code=404, detail="Asset not found")
+
+@router.delete("/{name}")
+def delete_asset(name: str):
+    """
+    Delete a data asset. 
+    If it's a file, delete from disk.
+    If it's a synced table, drop the table and remove from registry.
+    """
+    try:
+        # 1. Try to find as file
+        if os.path.exists(DATA_DIR):
+            file_path = os.path.join(DATA_DIR, name)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                os.remove(file_path)
+                return {"ok": True, "message": f"File {name} deleted"}
+
+        # 2. Try to find as SyncedTable
+        engine = create_engine(settings.SYSTEM_DB_URL)
+        with Session(engine) as session:
+            # Check registry first
+            statement = select(SyncedTable).where(SyncedTable.table_name == name)
+            synced_table = session.exec(statement).first()
+            
+            if synced_table:
+                # Drop table from DB
+                with engine.connect() as conn:
+                    # Use backticks for safety
+                    conn.execute(text(f"DROP TABLE IF EXISTS `{name}`"))
+                    conn.commit()
+                
+                # Remove from registry
+                session.delete(synced_table)
+                session.commit()
+                return {"ok": True, "message": f"Table {name} deleted"}
+            
+            # If not in registry but exists in DB (orphan?), try to drop it anyway if requested?
+            # For safety, we only delete what we track or what is clearly a file in our data dir.
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     raise HTTPException(status_code=404, detail="Asset not found")
 

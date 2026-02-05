@@ -16,6 +16,7 @@ const DataSourcesPage = () => {
   
   const [formData, setFormData] = useState({ 
       name: '', 
+      description: '',
       type: 'mysql', 
       connection_details: {
           host: 'localhost',
@@ -91,6 +92,7 @@ const DataSourcesPage = () => {
       // Convert connection_details back to JSON string for storage
       const payload = {
           name: formData.name,
+          description: formData.description,
           type: formData.type,
           connection_info: JSON.stringify(formData.connection_details)
       };
@@ -100,6 +102,7 @@ const DataSourcesPage = () => {
       // Reset form
       setFormData({ 
           name: '', 
+          description: '',
           type: 'mysql', 
           connection_details: {
             host: 'localhost',
@@ -247,34 +250,45 @@ const DataSourcesPage = () => {
       return <div className="text-slate-500 text-sm">No specific configuration for this type.</div>;
   };
 
+  const [jumpPage, setJumpPage] = useState('');
+
+  const handleJump = () => {
+      const p = parseInt(jumpPage);
+      const totalPages = Math.ceil(total / pageSize);
+      if (!isNaN(p) && p >= 1 && p <= totalPages) {
+          setPage(p);
+          setJumpPage('');
+      }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <Database className="text-blue-500" /> 数据源
         </h2>
         <button 
           onClick={() => setIsModalOpen(true)}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
+          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors shadow-sm"
         >
           <Plus size={18} /> 添加数据源
         </button>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
           <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                   type="text" 
                   placeholder="按名称搜索..." 
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                   value={filters.name}
                   onChange={e => handleFilterChange('name', e.target.value)}
               />
           </div>
           <div className="w-48">
               <select 
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                   value={filters.type}
                   onChange={e => handleFilterChange('type', e.target.value)}
               >
@@ -286,61 +300,105 @@ const DataSourcesPage = () => {
           </div>
       </div>
 
+      <div className="flex-1 overflow-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sources.map(source => (
-          <div key={source.id} className="bg-slate-800/50 border border-slate-700 rounded-lg p-5 hover:border-blue-500/50 transition-colors relative group">
+          <div key={source.id} className="bg-white border border-slate-200 rounded-lg p-5 hover:border-blue-500 hover:shadow-md transition-all relative group">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="font-semibold text-lg text-slate-200">{source.name}</h3>
-                <span className="text-xs text-slate-400 uppercase tracking-wider bg-slate-800 px-2 py-0.5 rounded border border-slate-700 mt-1 inline-block">
+                <h3 className="font-semibold text-lg text-slate-800">{source.name}</h3>
+                <span className="text-xs text-slate-500 uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded border border-slate-200 mt-1 inline-block font-medium">
                   {source.type}
                 </span>
               </div>
               <div className="flex gap-2">
                   <button 
                     onClick={() => openDetailModal(source)}
-                    className="text-slate-500 hover:text-blue-400"
+                    className="text-slate-400 hover:text-blue-500 p-1 rounded hover:bg-blue-50 transition-colors"
                     title="View Details"
                   >
                     <Info size={18} />
                   </button>
-                  <button onClick={() => handleDelete(source.id)} className="text-slate-500 hover:text-rose-500">
+                  <button onClick={() => handleDelete(source.id)} className="text-slate-400 hover:text-rose-500 p-1 rounded hover:bg-rose-50 transition-colors">
                     <Trash2 size={18} />
                   </button>
               </div>
             </div>
             
-            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-700/50">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 px-2 py-1 rounded border border-emerald-900/50">
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
                     <CheckCircle size={12} /> 已连接
                 </div>
-                <span className="text-xs text-slate-500 ml-auto">
+                <span className="text-xs text-slate-400 ml-auto font-mono">
                     ID: {source.id}
                 </span>
             </div>
           </div>
         ))}
       </div>
+      </div>
 
       {/* Pagination Controls */}
-      <div className="flex justify-between items-center mt-6 border-t border-slate-800 pt-4">
-        <span className="text-sm text-slate-400">
-            显示 {sources.length > 0 ? (page - 1) * pageSize + 1 : 0} 到 {Math.min(page * pageSize, total)} 条，共 {total} 条
+      <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
+        <span className="text-sm text-slate-500">
+            共 {total} 条
         </span>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+             <div className="flex items-center gap-2 mr-4">
+                  <span className="text-sm text-slate-500">前往</span>
+                  <input 
+                      type="number" 
+                      min="1" 
+                      max={Math.ceil(total / pageSize)}
+                      className="w-12 h-8 text-center bg-white border border-slate-200 rounded text-sm text-slate-700 focus:outline-none focus:border-blue-500"
+                      value={jumpPage}
+                      onChange={e => setJumpPage(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleJump()}
+                  />
+                  <span className="text-sm text-slate-500">页</span>
+              </div>
             <button 
                 disabled={page === 1}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
-                <ChevronLeft size={16} /> 上一页
+                <ChevronLeft size={16} />
             </button>
+            
+            <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, Math.ceil(total / pageSize)) }, (_, i) => {
+                      const totalPages = Math.ceil(total / pageSize);
+                      let p = page;
+                      if (totalPages > 5) {
+                          if (page <= 3) p = i + 1;
+                          else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                          else p = page - 2 + i;
+                      } else {
+                          p = i + 1;
+                      }
+                      
+                      return (
+                          <button
+                              key={p}
+                              onClick={() => setPage(p)}
+                              className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                                  page === p 
+                                  ? 'bg-blue-600 text-white shadow-sm' 
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                          >
+                              {p}
+                          </button>
+                      );
+                  })}
+            </div>
+
             <button 
                 disabled={page * pageSize >= total}
                 onClick={() => setPage(p => p + 1)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
             >
-                下一页 <ChevronRight size={16} />
+                <ChevronRight size={16} />
             </button>
         </div>
       </div>
@@ -356,6 +414,16 @@ const DataSourcesPage = () => {
               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
               value={formData.name}
               onChange={e => setFormData({...formData, name: e.target.value})}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1">数据类型描述</label>
+            <input 
+              type="text" 
+              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+              value={formData.description || ''}
+              onChange={e => setFormData({...formData, description: e.target.value})}
+              placeholder="例如: 文本数据、时序数据、图像数据"
             />
           </div>
           <div>
@@ -418,6 +486,11 @@ const DataSourcesPage = () => {
                           <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">类型</label>
                           <div className="text-slate-200 font-medium">{selectedSource.type}</div>
                       </div>
+                  </div>
+                  
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">描述</label>
+                      <div className="text-slate-200 font-medium">{selectedSource.description || '-'}</div>
                   </div>
                   
                   <div>
