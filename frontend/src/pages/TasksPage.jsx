@@ -214,37 +214,47 @@ const TasksPage = () => {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  const [jumpPage, setJumpPage] = useState('');
+
+  const handleJump = () => {
+      const p = parseInt(jumpPage);
+      if (!isNaN(p) && p >= 1 && p <= totalPages) {
+          setPage(p);
+          setJumpPage('');
+      }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <LayoutDashboard className="text-emerald-500" /> 任务管理
         </h2>
         <div className="flex gap-2">
             {selectedIds.length > 0 && (
                 <button 
                     onClick={handleBulkDelete}
-                    className="bg-rose-900/50 border border-rose-800 hover:bg-rose-900 text-rose-200 px-4 py-2 rounded flex items-center gap-2 transition-colors"
+                    className="bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded flex items-center gap-2 transition-colors"
                 >
                     <Trash2 size={16} /> 删除选中 ({selectedIds.length})
                 </button>
             )}
             <button 
               onClick={() => setIsModalOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors shadow-sm"
             >
               <Plus size={18} /> 创建任务
             </button>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
           <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                   type="text" 
                   placeholder="按名称搜索..." 
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20"
                   value={searchName}
                   onChange={e => {
                       setSearchName(e.target.value);
@@ -254,14 +264,14 @@ const TasksPage = () => {
           </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm flex-1 overflow-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-950 border-b border-slate-700 text-slate-400 text-sm uppercase tracking-wider">
+            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-sm uppercase tracking-wider sticky top-0 z-10">
               <th className="p-4 w-10">
                   <input 
                     type="checkbox" 
-                    className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500/30"
+                    className="rounded border-slate-300 bg-white text-emerald-500 focus:ring-emerald-500/30"
                     checked={tasks.length > 0 && selectedIds.length === tasks.length}
                     onChange={handleSelectAll}
                   />
@@ -273,20 +283,20 @@ const TasksPage = () => {
               <th className="p-4 font-medium text-right">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800">
+          <tbody className="divide-y divide-slate-100">
             {tasks.map(task => (
-              <tr key={task.id} className="hover:bg-slate-800/50 transition-colors">
+              <tr key={task.id} className="hover:bg-slate-50 transition-colors">
                 <td className="p-4">
                     <input 
                         type="checkbox" 
-                        className="rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500/30"
+                        className="rounded border-slate-300 bg-white text-emerald-500 focus:ring-emerald-500/30"
                         checked={selectedIds.includes(task.id)}
                         onChange={() => handleSelectOne(task.id)}
                     />
                 </td>
                 <td className="p-4 text-slate-500 font-mono">#{task.id}</td>
-                <td className="p-4 font-medium text-slate-200">{task.name}</td>
-                <td className="p-4 text-slate-400">{task.task_type === 'sync' ? '同步' : '预处理'}</td>
+                <td className="p-4 font-medium text-slate-700">{task.name}</td>
+                <td className="p-4 text-slate-600">{task.task_type === 'sync' ? '同步' : '预处理'}</td>
                 <td className="p-4">
                   <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
@@ -296,14 +306,14 @@ const TasksPage = () => {
                         {task.status === 'failed' && taskErrors[task.id] && (
                             <div className="relative group cursor-help">
                                 <AlertCircle size={16} className="text-rose-500" />
-                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-rose-950 border border-rose-800 rounded shadow-xl text-xs text-rose-200 z-10 break-words">
+                                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-64 p-2 bg-rose-50 border border-rose-200 rounded shadow-xl text-xs text-rose-600 z-10 break-words">
                                     {taskErrors[task.id]}
                                 </div>
                             </div>
                         )}
                       </div>
                       {(task.task_type === 'sync' || task.progress > 0) && task.status !== 'pending' && (
-                          <div className="w-full bg-slate-800 rounded-full h-1.5" title={`${task.progress || 0}%`}>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5" title={`${task.progress || 0}%`}>
                                 <div 
                                     className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" 
                                     style={{ width: `${task.progress || 0}%` }}
@@ -316,14 +326,14 @@ const TasksPage = () => {
                   <div className="flex justify-end gap-2">
                     <button 
                         onClick={() => openDetailModal(task)}
-                        className="text-slate-500 hover:text-emerald-400 p-2 rounded hover:bg-emerald-950/50 transition-colors"
+                        className="text-slate-400 hover:text-emerald-500 p-2 rounded hover:bg-emerald-50 transition-colors"
                         title="查看详情"
                     >
                         <Info size={18} />
                     </button>
                     <button 
                         onClick={() => handleDelete(task.id)}
-                        className="text-slate-500 hover:text-rose-500 p-2 rounded hover:bg-rose-950/50 transition-colors"
+                        className="text-slate-400 hover:text-rose-500 p-2 rounded hover:bg-rose-50 transition-colors"
                         title="删除任务"
                     >
                         <Trash2 size={18} />
@@ -331,7 +341,7 @@ const TasksPage = () => {
                     <button 
                         onClick={() => handleRun(task.id)}
                         disabled={task.status === 'running'}
-                        className="text-emerald-500 hover:text-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-950/50 transition-colors"
+                        className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed p-2 rounded hover:bg-emerald-50 transition-colors"
                         title="运行任务"
                     >
                         <Play size={18} />
@@ -342,37 +352,73 @@ const TasksPage = () => {
             ))}
             {tasks.length === 0 && (
                 <tr>
-                    <td colSpan="6" className="p-8 text-center text-slate-500">暂无任务，请点击右上角创建。</td>
+                    <td colSpan="6" className="p-8 text-center text-slate-400">暂无任务，请点击右上角创建。</td>
                 </tr>
             )}
           </tbody>
         </table>
-        
-        {/* Pagination Controls */}
-        <div className="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center justify-between">
-            <div className="text-sm text-slate-400">
-                显示 {tasks.length > 0 ? (page - 1) * pageSize + 1 : 0} 到 {Math.min(page * pageSize, total)} 条，共 {total} 条
-            </div>
-            <div className="flex gap-2">
-                <button 
-                    onClick={() => setPage(p => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                    className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <ChevronLeft size={18} />
-                </button>
-                <div className="px-2 flex items-center text-sm text-slate-300">
-                    {page} / {totalPages || 1}
-                </div>
-                <button 
-                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                    disabled={page >= totalPages}
-                    className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <ChevronRight size={18} />
-                </button>
-            </div>
-        </div>
+      </div>
+      
+      {/* Pagination Controls */}
+      <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
+          <div className="text-sm text-slate-500">
+             共 {total} 条
+          </div>
+          <div className="flex gap-2 items-center">
+             <div className="flex items-center gap-2 mr-4">
+                  <span className="text-sm text-slate-500">前往</span>
+                  <input 
+                      type="number" 
+                      min="1" 
+                      max={totalPages}
+                      className="w-12 h-8 text-center bg-white border border-slate-200 rounded text-sm text-slate-700 focus:outline-none focus:border-purple-500"
+                      value={jumpPage}
+                      onChange={e => setJumpPage(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleJump()}
+                  />
+                  <span className="text-sm text-slate-500">页</span>
+              </div>
+              <button 
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                  <ChevronLeft size={16} />
+              </button>
+              <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let p = page;
+                      if (totalPages > 5) {
+                          if (page <= 3) p = i + 1;
+                          else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                          else p = page - 2 + i;
+                      } else {
+                          p = i + 1;
+                      }
+                      
+                      return (
+                          <button
+                              key={p}
+                              onClick={() => setPage(p)}
+                              className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                                  page === p 
+                                  ? 'bg-purple-600 text-white shadow-sm' 
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                          >
+                              {p}
+                          </button>
+                      );
+                  })}
+              </div>
+              <button 
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                  <ChevronRight size={16} />
+              </button>
+          </div>
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="创建新任务">

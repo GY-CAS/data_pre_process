@@ -155,30 +155,40 @@ const DataManagementPage = () => {
   const totalPages = Math.ceil(total / pageSize);
   const totalPreviewPages = Math.ceil(previewTotal / previewPageSize);
 
+  const [jumpPage, setJumpPage] = useState('');
+
+  const handleJump = () => {
+      const p = parseInt(jumpPage);
+      if (!isNaN(p) && p >= 1 && p <= totalPages) {
+          setPage(p);
+          setJumpPage('');
+      }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 flex flex-col h-[calc(100vh-8rem)]">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
           <Folder className="text-purple-500" /> 数据管理
         </h2>
       </div>
 
-      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+      <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
           <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                   type="text" 
                   placeholder="按名称搜索..." 
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
               />
           </div>
           
           <div className="relative w-48">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <select 
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 appearance-none cursor-pointer"
                   value={filterType}
                   onChange={e => setFilterType(e.target.value)}
               >
@@ -189,22 +199,23 @@ const DataManagementPage = () => {
           </div>
       </div>
 
+      <div className="flex-1 overflow-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredAssets.map((asset, idx) => (
-              <div key={idx} className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden hover:border-purple-500/50 transition-all group relative">
+              <div key={idx} className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:border-purple-500 hover:shadow-md transition-all group relative">
                   <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
-                          <div className={`p-3 rounded-lg ${asset.type === 'table' ? 'bg-purple-900/20 text-purple-400' : 'bg-slate-900 text-slate-400'}`}>
+                          <div className={`p-3 rounded-lg ${asset.type === 'table' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
                               {asset.type === 'table' ? <Database size={24} /> : <FileText size={24} />}
                           </div>
                           <div className="flex gap-2 items-center">
-                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-500/30 text-purple-400' : 'border-slate-700 text-slate-500'}`}>
+                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
                                   {asset.type === 'table' ? '表' : '文件'}
                               </span>
                               {/* Delete Button (always visible) */}
                               <button 
                                   onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}
-                                  className="p-1.5 rounded-full bg-slate-900/80 text-slate-400 hover:text-rose-500 hover:bg-slate-900 transition-all z-10"
+                                  className="p-1.5 rounded-full bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all z-10"
                                   title="删除资产"
                               >
                                   <Trash2 size={14} />
@@ -212,34 +223,34 @@ const DataManagementPage = () => {
                           </div>
                       </div>
                       
-                      <h3 className="text-lg font-semibold text-slate-200 mb-1 truncate" title={asset.name}>
+                      <h3 className="text-lg font-semibold text-slate-800 mb-1 truncate" title={asset.name}>
                           {asset.name}
                       </h3>
-                      <p className="text-sm text-slate-400 mb-4 line-clamp-2 h-10">
+                      <p className="text-sm text-slate-500 mb-4 line-clamp-2 h-10">
                           从 {asset.source || '未知数据源'} 导入
                       </p>
 
-                      <div className="flex items-center gap-4 text-xs text-slate-500 font-mono mb-4">
+                      <div className="flex items-center gap-4 text-xs text-slate-400 font-mono mb-4">
                           <span>{asset.size}</span>
                       </div>
 
-                      <div className="flex gap-2 pt-4 border-t border-slate-700/50">
+                      <div className="flex gap-2 pt-4 border-t border-slate-100">
                           <button 
                             onClick={() => handlePreview(asset)}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm transition-colors"
+                            className="flex-1 flex items-center justify-center gap-2 py-2 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm transition-colors"
                           >
                               <Eye size={16} /> 预览
                           </button>
                           <button 
                             onClick={() => handleStructure(asset)}
-                            className="p-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                            className="p-2 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
                             title="结构"
                           >
                               <TableIcon size={16} />
                           </button>
                           <button 
                             onClick={() => handleExport(asset)}
-                            className="p-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                            className="p-2 rounded bg-slate-50 hover:bg-slate-100 text-slate-600 transition-colors"
                             title="导出"
                           >
                               <Download size={16} />
@@ -249,35 +260,72 @@ const DataManagementPage = () => {
               </div>
           ))}
           {filteredAssets.length === 0 && (
-            <div className="col-span-full p-12 border border-dashed border-slate-700 rounded-lg text-center text-slate-500">
+            <div className="col-span-full p-12 border border-dashed border-slate-300 rounded-lg text-center text-slate-400">
                 <Folder size={48} className="mx-auto mb-4 opacity-50" />
                 <p>未找到匹配的数据资产。</p>
             </div>
           )}
       </div>
+      </div>
       
       {/* Asset Pagination */}
-      <div className="bg-slate-950 px-4 py-3 border-t border-slate-800 flex items-center justify-between rounded-b-lg">
-          <div className="text-sm text-slate-400">
-              显示 {filteredAssets.length > 0 ? (page - 1) * pageSize + 1 : 0} - {Math.min(page * pageSize, total)} 共 {total} 个资产
+      <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
+          <div className="text-sm text-slate-500">
+             共 {total} 条
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+             <div className="flex items-center gap-2 mr-4">
+                  <span className="text-sm text-slate-500">前往</span>
+                  <input 
+                      type="number" 
+                      min="1" 
+                      max={totalPages}
+                      className="w-12 h-8 text-center bg-white border border-slate-200 rounded text-sm text-slate-700 focus:outline-none focus:border-purple-500"
+                      value={jumpPage}
+                      onChange={e => setJumpPage(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleJump()}
+                  />
+                  <span className="text-sm text-slate-500">页</span>
+              </div>
               <button 
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                  <ChevronLeft size={18} />
+                  <ChevronLeft size={16} />
               </button>
-              <div className="px-2 flex items-center text-sm text-slate-300">
-                  {page} / {totalPages || 1}
+              <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let p = page;
+                      if (totalPages > 5) {
+                          if (page <= 3) p = i + 1;
+                          else if (page >= totalPages - 2) p = totalPages - 4 + i;
+                          else p = page - 2 + i;
+                      } else {
+                          p = i + 1;
+                      }
+                      
+                      return (
+                          <button
+                              key={p}
+                              onClick={() => setPage(p)}
+                              className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                                  page === p 
+                                  ? 'bg-purple-600 text-white shadow-sm' 
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                              }`}
+                          >
+                              {p}
+                          </button>
+                      );
+                  })}
               </div>
               <button 
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="p-1 rounded bg-slate-800 text-slate-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-8 h-8 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
-                  <ChevronRight size={18} />
+                  <ChevronRight size={16} />
               </button>
           </div>
       </div>

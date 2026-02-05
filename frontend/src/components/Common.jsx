@@ -20,21 +20,21 @@ export const Modal = ({ isOpen, onClose, title, children }) => {
 
 export const StatusBadge = ({ status }) => {
   const styles = {
-    pending: "bg-slate-800 text-slate-300 border-slate-600",
-    running: "bg-blue-900/30 text-blue-400 border-blue-800 animate-pulse",
-    success: "bg-emerald-900/30 text-emerald-400 border-emerald-800",
-    failed: "bg-rose-900/30 text-rose-400 border-rose-800",
+    pending: "bg-slate-100 text-slate-600 border-slate-300",
+    running: "bg-blue-50 text-blue-600 border-blue-200 animate-pulse",
+    success: "bg-emerald-50 text-emerald-600 border-emerald-200",
+    failed: "bg-rose-50 text-rose-600 border-rose-200",
   };
   
   const icons = {
-    pending: <Clock size={14} />,
-    running: <RefreshCw size={14} className="animate-spin" />,
-    success: <CheckCircle size={14} />,
-    failed: <XCircle size={14} />,
+    pending: <Clock size={14} strokeWidth={2.5} />,
+    running: <RefreshCw size={14} className="animate-spin" strokeWidth={2.5} />,
+    success: <CheckCircle size={14} strokeWidth={2.5} />,
+    failed: <XCircle size={14} strokeWidth={2.5} />,
   };
 
   return (
-    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${styles[status] || styles.pending}`}>
+    <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${styles[status] || styles.pending}`}>
       {icons[status] || icons.pending}
       {status.toUpperCase()}
     </span>
