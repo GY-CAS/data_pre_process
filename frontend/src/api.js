@@ -17,10 +17,7 @@ export const testDataSourceConnection = (data) => api.post('/datasources/test-co
 
 export const getTasks = (params) => api.get('/tasks/', { params });
 export const createTask = (data) => api.post('/tasks/', data);
-<<<<<<< HEAD
 export const deleteTasks = (ids) => api.delete('/tasks/', { data: ids });
-=======
->>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
 export const deleteTask = (id) => api.delete(`/tasks/${id}`);
 export const runTask = (id) => api.post(`/tasks/${id}/run`);
 export const getTask = (id) => api.get(`/tasks/${id}`);
