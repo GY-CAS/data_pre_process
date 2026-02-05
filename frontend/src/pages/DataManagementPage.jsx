@@ -45,12 +45,17 @@ const DataManagementPage = () => {
           result = result.filter(a => a.type === filterType);
       }
       
+<<<<<<< HEAD
       setTotal(result.length);
       // Pagination logic for assets
       const start = (page - 1) * pageSize;
       const end = start + pageSize;
       setFilteredAssets(result.slice(start, end));
   }, [assets, searchTerm, filterType, page, pageSize]);
+=======
+      setFilteredAssets(result);
+  }, [assets, searchTerm, filterType]);
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
 
   const fetchAssets = async () => {
     try {
@@ -63,7 +68,10 @@ const DataManagementPage = () => {
   };
 
   const handleDeleteAsset = async (asset) => {
+<<<<<<< HEAD
       // 1. Double check before deletion
+=======
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
       if (confirm(`Are you sure you want to delete ${asset.name}? This action cannot be undone.`)) {
           try {
               await deleteDataAsset(asset.name);
@@ -173,6 +181,7 @@ const DataManagementPage = () => {
         </h2>
       </div>
 
+<<<<<<< HEAD
       <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
           <div className="relative flex-1 max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -180,15 +189,30 @@ const DataManagementPage = () => {
                   type="text" 
                   placeholder="按名称搜索..." 
                   className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
+=======
+      <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 flex gap-4 items-center">
+          <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <input 
+                  type="text" 
+                  placeholder="按名称搜索..." 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
               />
           </div>
           
           <div className="relative w-48">
+<<<<<<< HEAD
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <select 
                   className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 appearance-none cursor-pointer"
+=======
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
+              <select 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                   value={filterType}
                   onChange={e => setFilterType(e.target.value)}
               >
@@ -199,23 +223,37 @@ const DataManagementPage = () => {
           </div>
       </div>
 
+<<<<<<< HEAD
       <div className="flex-1 overflow-auto">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredAssets.map((asset, idx) => (
               <div key={idx} className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:border-purple-500 hover:shadow-md transition-all group relative">
+=======
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filteredAssets.map((asset, idx) => (
+              <div key={idx} className="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden hover:border-purple-500/50 transition-all group relative">
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                   <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
                           <div className={`p-3 rounded-lg ${asset.type === 'table' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
                               {asset.type === 'table' ? <Database size={24} /> : <FileText size={24} />}
                           </div>
                           <div className="flex gap-2 items-center">
+<<<<<<< HEAD
                               <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
+=======
+                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-500/30 text-purple-400' : 'border-slate-700 text-slate-500'}`}>
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                                   {asset.type === 'table' ? '表' : '文件'}
                               </span>
                               {/* Delete Button (always visible) */}
                               <button 
                                   onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}
+<<<<<<< HEAD
                                   className="p-1.5 rounded-full bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all z-10"
+=======
+                                  className="p-1.5 rounded-full bg-slate-900/80 text-slate-400 hover:text-rose-500 hover:bg-slate-900 transition-all z-10"
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                                   title="删除资产"
                               >
                                   <Trash2 size={14} />
@@ -226,7 +264,11 @@ const DataManagementPage = () => {
                       <h3 className="text-lg font-semibold text-slate-800 mb-1 truncate" title={asset.name}>
                           {asset.name}
                       </h3>
+<<<<<<< HEAD
                       <p className="text-sm text-slate-500 mb-4 line-clamp-2 h-10">
+=======
+                      <p className="text-sm text-slate-400 mb-4 line-clamp-2 h-10">
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                           从 {asset.source || '未知数据源'} 导入
                       </p>
 
@@ -260,7 +302,11 @@ const DataManagementPage = () => {
               </div>
           ))}
           {filteredAssets.length === 0 && (
+<<<<<<< HEAD
             <div className="col-span-full p-12 border border-dashed border-slate-300 rounded-lg text-center text-slate-400">
+=======
+            <div className="col-span-full p-12 border border-dashed border-slate-700 rounded-lg text-center text-slate-500">
+>>>>>>> 3061eb339f8abec3c0d110549ba36dd5b17e0c98
                 <Folder size={48} className="mx-auto mb-4 opacity-50" />
                 <p>未找到匹配的数据资产。</p>
             </div>
