@@ -303,6 +303,18 @@ const TasksPage = () => {
                         <div title={taskErrors[task.id] ? `失败原因: ${taskErrors[task.id]}` : ""}>
                             <StatusBadge status={task.status} />
                         </div>
+                        
+                        {task.verification_status === 'success' && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                已校验
+                            </span>
+                        )}
+                        {task.verification_status === 'failed' && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-rose-50 text-rose-600 border border-rose-200">
+                                校验失败
+                            </span>
+                        )}
+
                         {task.status === 'failed' && taskErrors[task.id] && (
                             <div className="relative group cursor-help">
                                 <AlertCircle size={16} className="text-rose-500" />

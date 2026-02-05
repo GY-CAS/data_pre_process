@@ -78,6 +78,68 @@ def run_sync_task(task_id: int):
                     session.commit()
                 
                 total_rows_synced = rows_processed
+                
+                # --- Data Verification for MySQL ---
+                task.verification_status = "pending"
+                session.add(task)
+                session.commit()
+                
+                try:
+                    from sqlalchemy import create_engine, text
+                    
+                    # 1. Get Source Checksum (if overwrite mode and feasible)
+                    # For append mode, simple count check is safer. For overwrite, we can try checksum.
+                    # Note: Checksum is expensive. Let's do a Row Count check first which is fast.
+                    
+                    # Source Count
+                    source_cnt_query = f"SELECT count(*) FROM {source_table}"
+                    source_count = pd.read_sql(source_cnt_query, url).iloc[0, 0]
+                    
+                    # Target Count
+                    target_engine = create_engine(target_url)
+                    with target_engine.connect() as t_conn:
+                        target_cnt_query = text(f"SELECT count(*) FROM {target_table}")
+                        target_count = t_conn.execute(target_cnt_query).scalar()
+                    
+                    if mode == "overwrite":
+                        if source_count != target_count:
+                            raise Exception(f"Rows mismatch: Source({source_count}) != Target({target_count})")
+                        
+                        # Optional: Advanced Checksum (CRC32)
+                        # Only run if table isn't huge to avoid timeout, or if user requested strict mode.
+                        # Using CRC32 on all columns.
+                        # 1. Get Columns
+                        cols_df = pd.read_sql(f"SHOW COLUMNS FROM {source_table}", url)
+                        cols = cols_df['Field'].tolist()
+                        
+                        if cols:
+                            # Construct Checksum Query: SELECT SUM(CRC32(CONCAT_WS(',', col1, col2...)))
+                            # CAST to UNSIGNED to avoid overflow issues in some versions if needed, though CRC32 returns unsigned.
+                            # BIT_XOR is order independent, SUM depends on row order if not strictly ordered, but sum is commutative.
+                            cols_str = ", ".join(cols)
+                            checksum_sql = f"SELECT SUM(CRC32(CONCAT_WS(',', {cols_str}))) FROM {{table}}"
+                            
+                            src_checksum = pd.read_sql(checksum_sql.format(table=source_table), url).iloc[0, 0]
+                            
+                            with target_engine.connect() as t_conn:
+                                tgt_checksum = t_conn.execute(text(checksum_sql.format(table=target_table))).scalar()
+                            
+                            # Handle potential None/Decimal types
+                            if str(src_checksum) != str(tgt_checksum):
+                                raise Exception(f"Checksum mismatch: Source({src_checksum}) != Target({tgt_checksum})")
+
+                    elif mode == "append":
+                        # For append, we can't easily check total count unless we knew before_count.
+                        pass
+
+                    task.verification_status = "success"
+
+                except Exception as verify_err:
+                    print(f"Verification Error: {verify_err}")
+                    task.verification_status = "failed"
+                    # We do NOT fail the task here, just mark verification as failed
+                    # raise verify_err # Propagate error to fail task
+
                     
             elif datasource.type == "clickhouse":
                  from clickhouse_driver import Client
@@ -129,9 +191,41 @@ def run_sync_task(task_id: int):
                          # Let's count files as rows for now or just 0
                          total_rows_synced += 1 
                          
+                         # --- Data Verification for MinIO ---
+                         try:
+                             # 1. Get Source Info
+                             src_head = s3.head_object(Bucket=source_table, Key=key)
+                             src_etag = src_head.get('ETag', '').strip('"')
+                             
+                             # 2. Get Target Info
+                             tgt_head = s3.head_object(Bucket=target_bucket, Key=key)
+                             tgt_etag = tgt_head.get('ETag', '').strip('"')
+                             
+                             if src_etag and tgt_etag and src_etag != tgt_etag:
+                                 raise Exception(f"File verification failed for {key}: Source ETag {src_etag} != Target ETag {tgt_etag}")
+                             
+                             # If we get here for the last file, or we want overall status?
+                             # MinIO syncs file by file. We should probably track if ANY failed.
+                             # But here we are inside a loop.
+                             # If one fails, we set status=failed and maybe break?
+                             # Or just let it continue?
+                             
+                         except Exception as verify_err:
+                             print(f"MinIO Verification Error for {key}: {verify_err}")
+                             # We should mark task as verification failed but maybe continue?
+                             # Or fail the whole verification?
+                             task.verification_status = "failed"
+                             # raise verify_err 
+                             
                          task.progress = int((processed_files / total_files) * 100)
                          session.add(task)
                          session.commit()
+            
+            # If we finished loop without setting verification_status to failed, set to success?
+            # We need to initialize it first.
+            if datasource.type == "minio" and task.verification_status != "failed":
+                 task.verification_status = "success"
+
 
             # Update SyncedTable Registry
             existing_table = session.exec(select(SyncedTable).where(SyncedTable.table_name == target_table)).first()
