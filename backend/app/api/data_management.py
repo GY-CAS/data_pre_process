@@ -16,7 +16,6 @@ class DataAsset(BaseModel):
     path: str
     size: str
     source: Optional[str] = None
-    source: Optional[str] = None
     rows: Optional[int] = 0
 
 class RowUpdate(BaseModel):
@@ -44,7 +43,6 @@ def get_assets(session: Session = Depends(get_session)):
                         path=path,
                         size=f"{size / 1024:.2f} KB",
                         source="Local File",
-                        source="Local File",
                         rows=0 
                     ))
     
@@ -55,8 +53,6 @@ def get_assets(session: Session = Depends(get_session)):
             name=table.table_name,
             type="table",
             path=table.table_name, 
-            size="-", # Size unknown for DB tables
-            source=table.source_name,
             size="-", # Size unknown for DB tables
             source=table.source_name,
             rows=table.row_count
