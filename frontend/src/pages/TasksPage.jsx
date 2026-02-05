@@ -506,12 +506,22 @@ const TasksPage = () => {
 
                  <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">
-                        {sources.find(s => s.id == syncDetails.sourceId)?.type === 'minio' ? "目标 Bucket" : "目标表 (系统数据库)"}
+                        {(() => {
+                            const sourceType = sources.find(s => s.id == syncDetails.sourceId)?.type;
+                            if (sourceType === 'minio') return "目标 Bucket";
+                            if (sourceType === 'clickhouse') return "目标表 (ClickHouse)";
+                            return "目标表 (系统数据库)";
+                        })()}
                     </label>
                     <input 
                       type="text" 
                       required
-                      placeholder={sources.find(s => s.id == syncDetails.sourceId)?.type === 'minio' ? "例如: processed-data" : "例如: synced_customers"}
+                      placeholder={(() => {
+                          const sourceType = sources.find(s => s.id == syncDetails.sourceId)?.type;
+                          if (sourceType === 'minio') return "例如: processed-data";
+                          if (sourceType === 'clickhouse') return "例如: target_table_name";
+                          return "例如: synced_customers";
+                      })()}
                       className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
                       value={syncDetails.targetTable}
                       onChange={e => setSyncDetails({...syncDetails, targetTable: e.target.value})}

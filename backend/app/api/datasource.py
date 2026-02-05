@@ -120,6 +120,28 @@ def get_datasource_metadata(datasource_id: int, session: Session = Depends(get_s
                  # This is a bit guessy.
                  pass
 
+        elif db_type == "mysql":
+            try:
+                from sqlalchemy import create_engine, text
+                user = connection_info.get("user")
+                password = connection_info.get("password")
+                host = connection_info.get("host")
+                port = connection_info.get("port", 3306)
+                database = connection_info.get("database")
+                
+                if not all([user, host, database]):
+                     return {"status": "error", "message": "Missing required fields (user, host, database)"}
+
+                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+                engine = create_engine(url)
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                return {"status": "success", "message": "Successfully connected to MySQL"}
+            except ImportError:
+                 return {"status": "error", "message": "MySQL driver (pymysql) not installed on server."}
+            except Exception as e:
+                return {"status": "error", "message": f"Connection failed: {str(e)}"}
+
         elif db_type == "minio":
             import boto3
             # MinIO usually requires endpoint, access_key, secret_key
@@ -162,25 +184,23 @@ def test_connection(connection_info: dict):
             else:
                  return {"status": "error", "message": f"Path does not exist or is not a file: {path}"}
 
-        elif db_type == "mysql":
+        elif db_type == "clickhouse":
             try:
-                from sqlalchemy import create_engine, text
+                from clickhouse_driver import Client
                 user = connection_info.get("user")
                 password = connection_info.get("password")
                 host = connection_info.get("host")
-                port = connection_info.get("port", 3306)
+                port = connection_info.get("port", 9000)
                 database = connection_info.get("database")
                 
-                if not all([user, host, database]):
-                     return {"status": "error", "message": "Missing required fields (user, host, database)"}
+                if not all([host]):
+                     return {"status": "error", "message": "Missing required fields (host)"}
 
-                url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
-                engine = create_engine(url)
-                with engine.connect() as conn:
-                    conn.execute(text("SELECT 1"))
-                return {"status": "success", "message": "Successfully connected to MySQL"}
+                client = Client(host=host, port=port, user=user, password=password, database=database)
+                client.execute('SELECT 1')
+                return {"status": "success", "message": "Successfully connected to ClickHouse"}
             except ImportError:
-                 return {"status": "error", "message": "MySQL driver (pymysql) not installed on server."}
+                 return {"status": "error", "message": "clickhouse-driver not installed on server."}
             except Exception as e:
                 return {"status": "error", "message": f"Connection failed: {str(e)}"}
 

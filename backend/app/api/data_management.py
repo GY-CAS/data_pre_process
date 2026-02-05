@@ -60,40 +60,79 @@ def get_assets(session: Session = Depends(get_session)):
         
     return assets
 
+from clickhouse_driver import Client
+
+def get_ck_client():
+    return Client(
+        host=settings.CK_HOST, 
+        port=settings.CK_PORT, 
+        user=settings.CK_USER, 
+        password=settings.CK_PASSWORD, 
+        database='default'
+    )
+
 @router.get("/preview")
-def preview_data(path: str, limit: int = 20, offset: int = 0):
+def preview_data(path: str, limit: int = 20, offset: int = 0, session: Session = Depends(get_session)):
     # Check if file exists
     if os.path.exists(path):
         try:
             if path.endswith('.csv'):
-                df = pd.read_csv(path, nrows=limit, skiprows=lambda x: x > 0 and x < offset) # simple offset logic for csv is hard without full read, assuming just head for files
-                # For files, just read head for now as before
+                df = pd.read_csv(path, nrows=limit, skiprows=lambda x: x > 0 and x < offset) 
                 if offset == 0:
                     df = pd.read_csv(path, nrows=limit)
                 else:
-                    # simplistic pagination for csv
                     df = pd.read_csv(path, skiprows=range(1, offset+1), nrows=limit)
             elif path.endswith('.parquet'):
                 df = pd.read_parquet(path)
                 df = df.iloc[offset:offset+limit]
             elif path.endswith('.json'):
-                # JSON pagination is hard without reading all
                 df = pd.read_json(path, orient='records', lines=True)
                 df = df.iloc[offset:offset+limit]
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file type")
             
-            # Convert to JSON friendly format
             df = df.where(pd.notnull(df), None)
             return {
                 "columns": df.columns.tolist(),
                 "data": df.to_dict(orient="records"),
-                "total": 1000 # Mock for files
+                "total": 1000 
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    # If not file, try DB Table
+    # Check SyncedTable registry to determine storage location
+    synced_table = session.exec(select(SyncedTable).where(SyncedTable.table_name == path)).first()
+    
+    if synced_table and synced_table.source_type == 'clickhouse':
+        # Fetch from Target ClickHouse
+        try:
+            client = get_ck_client()
+            # Get Total
+            total = client.execute(f"SELECT count(*) FROM {path}")[0][0]
+            
+            # Get Data (ClickHouse doesn't support OFFSET without LIMIT properly, but LIMIT offset, limit works)
+            data = client.execute(f"SELECT * FROM {path} LIMIT {offset}, {limit}")
+            columns = [c[0] for c in client.execute(f"DESCRIBE {path}")]
+            
+            # Map to dict
+            formatted_data = []
+            for row in data:
+                # We need a _rowid. ClickHouse doesn't have stable rowid.
+                # Use a fake one or try to find a PK?
+                # For now, fake it based on offset.
+                row_dict = dict(zip(columns, row))
+                row_dict['_rowid'] = 0 # Dummy, or generate
+                formatted_data.append(row_dict)
+
+            return {
+                "columns": columns,
+                "data": formatted_data,
+                "total": total
+            }
+        except Exception as e:
+             raise HTTPException(status_code=500, detail=f"ClickHouse Error: {str(e)}")
+
+    # Fallback to System MySQL DB
     try:
         engine = create_engine(settings.SYSTEM_DB_URL)
         inspector = inspect(engine)
@@ -146,7 +185,7 @@ def preview_data(path: str, limit: int = 20, offset: int = 0):
     raise HTTPException(status_code=404, detail="Asset not found")
 
 @router.delete("/{name}")
-def delete_asset(name: str):
+def delete_asset(name: str, session: Session = Depends(get_session)):
     """
     Delete a data asset. 
     If it's a file, delete from disk.
@@ -161,26 +200,30 @@ def delete_asset(name: str):
                 return {"ok": True, "message": f"File {name} deleted"}
 
         # 2. Try to find as SyncedTable
-        engine = create_engine(settings.SYSTEM_DB_URL)
-        with Session(engine) as session:
-            # Check registry first
-            statement = select(SyncedTable).where(SyncedTable.table_name == name)
-            synced_table = session.exec(statement).first()
-            
-            if synced_table:
-                # Drop table from DB
+        # Check registry first
+        statement = select(SyncedTable).where(SyncedTable.table_name == name)
+        synced_table = session.exec(statement).first()
+        
+        if synced_table:
+            # Check if ClickHouse
+            if synced_table.source_type == 'clickhouse':
+                try:
+                    client = get_ck_client()
+                    client.execute(f"DROP TABLE IF EXISTS {name}")
+                except Exception as ck_err:
+                     raise HTTPException(status_code=500, detail=f"ClickHouse Drop Error: {str(ck_err)}")
+            else:
+                # Default: Drop table from System MySQL DB
+                engine = create_engine(settings.SYSTEM_DB_URL)
                 with engine.connect() as conn:
                     # Use backticks for safety
                     conn.execute(text(f"DROP TABLE IF EXISTS `{name}`"))
                     conn.commit()
-                
-                # Remove from registry
-                session.delete(synced_table)
-                session.commit()
-                return {"ok": True, "message": f"Table {name} deleted"}
             
-            # If not in registry but exists in DB (orphan?), try to drop it anyway if requested?
-            # For safety, we only delete what we track or what is clearly a file in our data dir.
+            # Remove from registry
+            session.delete(synced_table)
+            session.commit()
+            return {"ok": True, "message": f"Table {name} deleted"}
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -245,7 +288,7 @@ def update_table_row(table_name: str, row_id: int, update: RowUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/structure")
-def get_structure(path: str):
+def get_structure(path: str, session: Session = Depends(get_session)):
     # Check file
     if os.path.exists(path):
         try:
@@ -271,7 +314,25 @@ def get_structure(path: str):
             return structure
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-            
+    
+    # Check Registry for ClickHouse
+    synced_table = session.exec(select(SyncedTable).where(SyncedTable.table_name == path)).first()
+    if synced_table and synced_table.source_type == 'clickhouse':
+        try:
+            client = get_ck_client()
+            desc = client.execute(f"DESCRIBE {path}")
+            # desc row: (name, type, default_type, default_expression, comment, codec_expression, ttl_expression)
+            structure = []
+            for row in desc:
+                 structure.append({
+                    "name": row[0],
+                    "type": row[1],
+                    "nullable": False # CH types are non-nullable by default unless Nullable()
+                })
+            return structure
+        except Exception as e:
+             raise HTTPException(status_code=500, detail=f"ClickHouse Error: {str(e)}")
+
     # Check DB
     try:
         engine = create_engine(settings.SYSTEM_DB_URL)

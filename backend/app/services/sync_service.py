@@ -143,14 +143,85 @@ def run_sync_task(task_id: int):
                     
             elif datasource.type == "clickhouse":
                  from clickhouse_driver import Client
+                 
+                 # Source Client
                  client = Client(host=conn_info['host'], port=conn_info.get('port', 9000), user=conn_info['user'], password=conn_info['password'], database=conn_info['database'])
                  
+                 # Target Client (from .env settings)
+                 target_client = Client(host=settings.CK_HOST, port=settings.CK_PORT, user=settings.CK_USER, password=settings.CK_PASSWORD, database='default') # Default DB for now
+                 
+                 # Count rows from Source
+                 count_res = client.execute(f"SELECT count(*) FROM {source_table}")
+                 total_rows = count_res[0][0] if count_res else 0
+                 
+                 # Read Data from Source
                  data = client.execute(f"SELECT * FROM {source_table}")
                  columns = [c[0] for c in client.execute(f"DESCRIBE {source_table}")]
-                 df = pd.DataFrame(data, columns=columns)
                  
-                 df.to_sql(target_table, target_url, if_exists=mode, index=False)
-                 total_rows_synced = len(df)
+                 # Create Target Table if not exists (Best Effort? Or assume it exists?)
+                 # For sync, it's better to ensure it exists.
+                 # Let's get DDL from source? 'SHOW CREATE TABLE'
+                 try:
+                     create_stmt = client.execute(f"SHOW CREATE TABLE {source_table}")[0][0]
+                     # Replace table name with target_table
+                     # create_stmt is like "CREATE TABLE db.table ..."
+                     # We need to replace `db.table` or `table` with `target_table`
+                     # This is tricky with regex. 
+                     # Simpler approach: Create generic table based on columns if not exists?
+                     # Or just assume user created it?
+                     # Let's try to run the CREATE statement on target, replacing the table name.
+                     # But source might have specific engines/settings not suitable for target if different cluster.
+                     # Let's stick to: "Support full sync mode (append/overwrite)".
+                     # If overwrite, we might need to truncate target.
+                     
+                     # Simple approach: If overwrite, Drop & Create. If append, Insert.
+                     # But we need the schema.
+                     # Let's just Insert. If table doesn't exist, this will fail.
+                     # User intent: "Sync data... to .env ClickHouse".
+                     
+                     # To make it robust:
+                     # 1. Check if target table exists.
+                     exists = target_client.execute(f"EXISTS TABLE {target_table}")[0][0]
+                     
+                     if not exists:
+                         # Try to copy structure
+                         # Get column types
+                         desc = client.execute(f"DESCRIBE {source_table}")
+                         # desc row: (name, type, default_type, default_expression, comment, codec_expression, ttl_expression)
+                         cols_def = ", ".join([f"{r[0]} {r[1]}" for r in desc])
+                         # Use MergeTree by default for standalone CH
+                         create_sql = f"CREATE TABLE {target_table} ({cols_def}) ENGINE = MergeTree() ORDER BY tuple()"
+                         target_client.execute(create_sql)
+                     elif mode == "overwrite":
+                         target_client.execute(f"TRUNCATE TABLE {target_table}")
+                         
+                     # Write to Target
+                     if data:
+                         target_client.execute(f"INSERT INTO {target_table} ({', '.join(columns)}) VALUES", data)
+                     
+                     total_rows_synced = len(data)
+                     
+                 except Exception as e:
+                     print(f"ClickHouse Sync Error: {e}")
+                     raise e
+
+                 # --- Verification for ClickHouse ---
+                 task.verification_status = "pending"
+                 session.add(task)
+                 session.commit()
+                 try:
+                     # Verify Row Counts
+                     target_count_res = target_client.execute(f"SELECT count(*) FROM {target_table}")
+                     target_count = target_count_res[0][0] if target_count_res else 0
+                     
+                     if mode == "overwrite":
+                         if total_rows != target_count:
+                             raise Exception(f"Rows mismatch: Source({total_rows}) != Target({target_count})")
+                             
+                     task.verification_status = "success"
+                 except Exception as verify_err:
+                     print(f"ClickHouse Verification Error: {verify_err}")
+                     task.verification_status = "failed"
                  
             elif datasource.type == "minio":
                  import boto3
