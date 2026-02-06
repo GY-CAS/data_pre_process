@@ -1,1 +1,0 @@
-{"job_name":"test","source":{"type":"jdbc","url":"mysql+pymysql://root:infini_rag_flow@localhost:3306/test_case_automation","table":"your_source_table","query":"SELECT * FROM test_case_automation.some_table LIMIT 1000"},"target":{"type":"jdbc","url":"sqlite:///system_data.db","table":"test_case_automation","mode":"overwrite"}}
