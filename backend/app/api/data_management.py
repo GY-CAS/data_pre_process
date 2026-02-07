@@ -26,6 +26,7 @@ class RowUpdate(BaseModel):
 from sqlmodel import Session, select
 from backend.app.core.db import get_session
 from backend.app.models.synced_table import SyncedTable
+from backend.app.models.audit import AuditLog
 
 @router.get("/assets", response_model=List[DataAsset])
 def get_assets(session: Session = Depends(get_session)):
@@ -291,6 +292,15 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
                         conn.commit()
                  
                  session.delete(synced_table)
+                 
+                 # Add Audit Log
+                 session.add(AuditLog(
+                     user_id="user", # TODO: Get actual user
+                     action="delete_asset",
+                     resource=name,
+                     details=f"Deleted asset {name} (ID: {name_or_id}) of type {synced_table.source_type}"
+                 ))
+                 
                  session.commit()
                  return {"ok": True, "message": f"Asset {name} deleted"}
 
@@ -300,6 +310,14 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
             file_path = os.path.join(DATA_DIR, name)
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 os.remove(file_path)
+                # Add Audit Log
+                session.add(AuditLog(
+                     user_id="user",
+                     action="delete_asset",
+                     resource=name,
+                     details=f"Deleted local file {name}"
+                ))
+                session.commit()
                 return {"ok": True, "message": f"File {name} deleted"}
 
         # 3. Fallback: Find SyncedTable by Name (Legacy support or if ID lookup failed)
@@ -307,21 +325,13 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
         synced_table = session.exec(statement).first()
         
         if synced_table:
-            # Duplicate logic... ideally refactor.
-            # But since we prioritized ID above, this handles the case where we pass a name.
-            # But if names are duplicated, this picks the first one. 
-            # We strongly encourage using ID.
-            
-            # ... Copy paste previous logic or refactor to function ...
-            # For brevity in this edit, I will call the deletion logic recursively or just copy it?
-            # Let's copy the logic for now but simpler.
+             # ... (Deletion Logic) ...
              if synced_table.source_type == 'clickhouse':
                     try:
                         client = get_ck_client()
                         client.execute(f"DROP TABLE IF EXISTS {name}")
                     except: pass
              elif synced_table.source_type == 'minio':
-                    # MinIO logic...
                     pass 
              else:
                     engine = create_engine(settings.SYSTEM_DB_URL)
@@ -329,6 +339,15 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
                         conn.execute(text(f"DROP TABLE IF EXISTS `{name}`"))
                         conn.commit()
              session.delete(synced_table)
+             
+             # Add Audit Log
+             session.add(AuditLog(
+                 user_id="user",
+                 action="delete_asset",
+                 resource=name,
+                 details=f"Deleted asset {name} (Fallback Name Match) of type {synced_table.source_type}"
+             ))
+             
              session.commit()
              return {"ok": True, "message": f"Table {name} deleted"}
             
@@ -338,7 +357,7 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
     raise HTTPException(status_code=404, detail="Asset not found")
 
 @router.delete("/table/{table_name}/row/{row_id}")
-def delete_table_row(table_name: str, row_id: int):
+def delete_table_row(table_name: str, row_id: int, session: Session = Depends(get_session)):
     try:
         engine = create_engine(settings.SYSTEM_DB_URL)
         # Verify table exists to prevent injection
@@ -355,12 +374,21 @@ def delete_table_row(table_name: str, row_id: int):
         with engine.connect() as conn:
             conn.execute(text(f"DELETE FROM {table_name} WHERE {pk_col} = :row_id"), {"row_id": row_id})
             conn.commit()
-            return {"ok": True}
+            
+        # Add Audit Log
+        session.add(AuditLog(
+             user_id="user",
+             action="delete_row",
+             resource=table_name,
+             details=f"Deleted row {row_id} from table {table_name}"
+        ))
+        session.commit()
+        return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/table/{table_name}/row/{row_id}")
-def update_table_row(table_name: str, row_id: int, update: RowUpdate):
+def update_table_row(table_name: str, row_id: int, update: RowUpdate, session: Session = Depends(get_session)):
     try:
         engine = create_engine(settings.SYSTEM_DB_URL)
         inspector = inspect(engine)
@@ -390,7 +418,16 @@ def update_table_row(table_name: str, row_id: int, update: RowUpdate):
         with engine.connect() as conn:
             conn.execute(text(query), params)
             conn.commit()
-            return {"ok": True}
+            
+        # Add Audit Log
+        session.add(AuditLog(
+             user_id="user",
+             action="update_row",
+             resource=table_name,
+             details=f"Updated row {row_id} in table {table_name}. Fields: {list(update.data.keys())}"
+        ))
+        session.commit()
+        return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -483,6 +520,10 @@ def download_asset(name_or_id: str, format: str = "csv", session: Session = Depe
     Export data asset to a file.
     """
     try:
+        # Audit Log Entry (Before or After?) - Let's log the attempt
+        # Resolving name first
+        target_name = name_or_id
+        
         # 1. Check Registry for Source Type
         synced_table = None
         if name_or_id.isdigit():
@@ -494,6 +535,16 @@ def download_asset(name_or_id: str, format: str = "csv", session: Session = Depe
         name = name_or_id
         if synced_table:
              name = synced_table.table_name
+             target_name = name
+
+        # Log Download Action
+        session.add(AuditLog(
+             user_id="user",
+             action="download_asset",
+             resource=target_name,
+             details=f"Exported/Downloaded asset {target_name} in format {format}"
+        ))
+        session.commit()
         
         # Determine Data Source & Fetch Data
         df = None
