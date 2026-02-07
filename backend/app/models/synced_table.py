@@ -4,7 +4,7 @@ from datetime import datetime
 
 class SyncedTable(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    table_name: str = Field(index=True, unique=True)
+    table_name: str = Field(index=True) # Removed unique=True
     source_type: str
     source_name: str
     row_count: int = Field(default=0)

@@ -30,8 +30,8 @@ export const createAuditLog = (data) => api.post('/audit/', data);
 // Data Management
 export const getDataAssets = () => api.get('/data-mgmt/assets');
 export const deleteDataAsset = (name) => api.delete(`/data-mgmt/${name}`);
-export const previewData = (path, limit = 20, offset = 0) => api.get('/data-mgmt/preview', { params: { path, limit, offset } });
-export const getDataStructure = (path) => api.get('/data-mgmt/structure', { params: { path } });
+export const previewData = (path, limit = 20, offset = 0, id = null) => api.get('/data-mgmt/preview', { params: { path, limit, offset, id } });
+export const getDataStructure = (path, id = null) => api.get('/data-mgmt/structure', { params: { path, id } });
 export const updateTableRow = (table, rowId, data) => api.put(`/data-mgmt/table/${table}/row/${rowId}`, { row_id: rowId, data });
 export const deleteTableRow = (table, rowId) => api.delete(`/data-mgmt/table/${table}/row/${rowId}`);
 export const downloadDataAsset = (name, format = 'csv') => api.get(`/data-mgmt/download/${name}`, { params: { format }, responseType: 'blob' });

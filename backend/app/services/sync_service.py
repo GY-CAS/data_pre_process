@@ -317,13 +317,29 @@ def run_sync_task(task_id: int):
 
 
             # Update SyncedTable Registry
-            existing_table = session.exec(select(SyncedTable).where(SyncedTable.table_name == target_table)).first()
+            # Determine logic to find existing entry based on storage backend
+            query = select(SyncedTable).where(SyncedTable.table_name == target_table)
+            
+            if datasource.type == 'minio':
+                query = query.where(SyncedTable.source_type == 'minio')
+            elif datasource.type == 'clickhouse':
+                query = query.where(SyncedTable.source_type == 'clickhouse')
+            else:
+                # Assume all others (mysql, postgres, etc.) map to System DB tables
+                # So they share the same namespace and entry.
+                query = query.where(SyncedTable.source_type.notin_(['minio', 'clickhouse']))
+            
+            existing_table = session.exec(query).first()
+            
             if existing_table:
                 if mode == "overwrite":
                     existing_table.row_count = total_rows_synced
                 else:
                     existing_table.row_count += total_rows_synced
                 existing_table.updated_at = datetime.utcnow()
+                # Also update source info in case it changed (e.g. reusing table name)
+                existing_table.source_type = datasource.type
+                existing_table.source_name = datasource.name
                 session.add(existing_table)
             else:
                 new_table = SyncedTable(

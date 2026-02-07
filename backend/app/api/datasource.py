@@ -11,6 +11,11 @@ router = APIRouter(prefix="/datasources", tags=["datasources"])
 
 @router.post("/", response_model=DataSource)
 def create_datasource(datasource: DataSource, session: Session = Depends(get_session)):
+    # Check for duplicates (Same Name + Same Type)
+    existing = session.exec(select(DataSource).where(DataSource.name == datasource.name, DataSource.type == datasource.type)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Data source with name '{datasource.name}' already exists for type '{datasource.type}'")
+
     session.add(datasource)
     session.commit()
     session.refresh(datasource)
