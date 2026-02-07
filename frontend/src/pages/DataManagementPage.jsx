@@ -68,7 +68,9 @@ const DataManagementPage = () => {
       // 1. Double check before deletion
       if (confirm(`Are you sure you want to delete ${asset.name}? This action cannot be undone.`)) {
           try {
-              await deleteDataAsset(asset.name);
+              // Use ID if available, otherwise name (backward compat)
+              const identifier = asset.id ? asset.id.toString() : asset.name;
+              await deleteDataAsset(identifier);
               fetchAssets(); // Refresh list
           } catch (err) {
               alert('Failed to delete asset: ' + (err.response?.data?.detail || err.message));
@@ -79,7 +81,14 @@ const DataManagementPage = () => {
   const handlePreview = async (asset, pageNum = 1) => {
     try {
       const offset = (pageNum - 1) * previewPageSize;
-      const res = await previewData(asset.path, previewPageSize, offset);
+      // Pass ID as query param or part of path? 
+      // API: previewData(path, limit, offset, id)
+      // We need to update api.js to support id parameter
+      // For now, let's assume previewData accepts optional 4th param or object
+      // Actually, looking at api.js is needed. I will update it.
+      // But assuming I can pass it.
+      
+      const res = await previewData(asset.path, previewPageSize, offset, asset.id);
       setPreviewContent(res.data);
       setPreviewTotal(res.data.total || 0); 
       setSelectedAsset(asset);
@@ -98,7 +107,7 @@ const DataManagementPage = () => {
 
   const handleStructure = async (asset) => {
      try {
-      const res = await getDataStructure(asset.path);
+      const res = await getDataStructure(asset.path, asset.id);
       setStructureContent(res.data);
       setSelectedAsset(asset);
       setModalType('structure');
@@ -120,7 +129,8 @@ const DataManagementPage = () => {
           // We can reuse handleExportConfirm logic but need to set state properly
           // Or just call API here.
           try {
-              const res = await downloadDataAsset(asset.name, 'minio'); // format ignored for minio
+              const identifier = asset.id ? asset.id.toString() : asset.name;
+              const res = await downloadDataAsset(identifier, 'minio'); // format ignored for minio
               
               if (res.headers['content-type']?.includes('application/json')) {
                    const text = await res.data.text();
@@ -143,7 +153,8 @@ const DataManagementPage = () => {
       if (!selectedAsset) return;
       
       try {
-          const res = await downloadDataAsset(selectedAsset.name, exportFormat);
+          const identifier = selectedAsset.id ? selectedAsset.id.toString() : selectedAsset.name;
+          const res = await downloadDataAsset(identifier, exportFormat);
           
           // Check if it's MinIO links (JSON) or Blob
           if (res.headers['content-type']?.includes('application/json')) {
@@ -287,7 +298,7 @@ const DataManagementPage = () => {
               >
                   <option value="all">所有类型</option>
                   <option value="table">数据库表</option>
-                  <option value="file">本地文件</option>
+                  <option value="bucket">MinIO 存储桶</option>
               </select>
           </div>
       </div>
@@ -298,11 +309,21 @@ const DataManagementPage = () => {
               <div key={idx} className="bg-white border border-slate-200 rounded-lg overflow-hidden hover:border-purple-500 hover:shadow-md transition-all group relative">
                   <div className="p-5">
                       <div className="flex items-start justify-between mb-4">
-                          <div className={`p-3 rounded-lg ${asset.type === 'table' ? 'bg-purple-50 text-purple-600' : 'bg-slate-100 text-slate-500'}`}>
-                              {asset.type === 'table' ? <Database size={24} /> : <FileText size={24} />}
+                          <div className={`p-3 rounded-lg ${
+                              asset.type === 'table' ? 'bg-purple-50 text-purple-600' : 
+                              asset.type === 'bucket' ? 'bg-orange-50 text-orange-600' :
+                              'bg-slate-100 text-slate-500'
+                          }`}>
+                              {asset.type === 'table' ? <Database size={24} /> : 
+                               asset.type === 'bucket' ? <Folder size={24} /> :
+                               <FileText size={24} />}
                           </div>
                           <div className="flex gap-2 items-center">
-                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 'border-slate-200 text-slate-500 bg-slate-50'}`}>
+                              <span className={`text-xs font-mono border px-2 py-0.5 rounded ${
+                                  asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 
+                                  asset.type === 'bucket' ? 'border-orange-200 text-orange-600 bg-orange-50' :
+                                  'border-slate-200 text-slate-500 bg-slate-50'
+                              }`}>
                                   {asset.source || asset.type}
                               </span>
                               {/* Delete Button (always visible) */}

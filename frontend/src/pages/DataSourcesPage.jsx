@@ -50,6 +50,47 @@ const DataSourcesPage = () => {
   const [testStatus, setTestStatus] = useState(null); // null, 'testing', 'success', 'error'
   const [testMessage, setTestMessage] = useState('');
 
+  const [connectionStatuses, setConnectionStatuses] = useState({}); // { id: { status: 'loading' | 'success' | 'error', message: '' } }
+  
+  // Duplicate Check State
+  const [duplicateError, setDuplicateError] = useState('');
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+
+  useEffect(() => {
+    const checkDuplicate = async () => {
+        if (!formData.name.trim() || !isModalOpen) {
+            setDuplicateError('');
+            return;
+        }
+        
+        setIsCheckingDuplicate(true);
+        try {
+            // Fetch potential matches
+            const res = await getDataSources({ 
+                name: formData.name, 
+                type: formData.type,
+                limit: 50 
+            });
+            
+            // Backend performs 'contains' search, so we must check exact match
+            const exists = res.data.data.some(s => s.name === formData.name && s.type === formData.type);
+            
+            if (exists) {
+                setDuplicateError(`该类型 (${formData.type}) 下已存在名为 '${formData.name}' 的数据源`);
+            } else {
+                setDuplicateError('');
+            }
+        } catch (error) {
+            console.error("Duplicate check failed", error);
+        } finally {
+            setIsCheckingDuplicate(false);
+        }
+    };
+
+    const timer = setTimeout(checkDuplicate, 500);
+    return () => clearTimeout(timer);
+  }, [formData.name, formData.type, isModalOpen]);
+
   const fetchSources = async () => {
     try {
       const params = {
@@ -60,11 +101,54 @@ const DataSourcesPage = () => {
       if (filters.type) params.type = filters.type;
       
       const res = await getDataSources(params);
-      setSources(res.data.data);
+      const data = res.data.data;
+      setSources(data);
       setTotal(res.data.total);
+
+      // Check connections for all loaded sources
+      checkAllConnections(data);
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const checkAllConnections = async (sourceList) => {
+      // Initialize status to loading
+      const initialStatus = {};
+      sourceList.forEach(s => {
+          initialStatus[s.id] = { status: 'loading', message: '' };
+      });
+      setConnectionStatuses(prev => ({ ...prev, ...initialStatus }));
+
+      // Check each source
+      // We can run these in parallel or sequence. Parallel is better for UI.
+      sourceList.forEach(async (source) => {
+          try {
+              const connectionInfo = JSON.parse(source.connection_info);
+              const payload = {
+                  type: source.type,
+                  ...connectionInfo
+              };
+              const res = await testDataSourceConnection(payload);
+              
+              if (res.data.status === 'success') {
+                  setConnectionStatuses(prev => ({
+                      ...prev,
+                      [source.id]: { status: 'success', message: 'Connected' }
+                  }));
+              } else {
+                  setConnectionStatuses(prev => ({
+                      ...prev,
+                      [source.id]: { status: 'error', message: res.data.message }
+                  }));
+              }
+          } catch (err) {
+               setConnectionStatuses(prev => ({
+                  ...prev,
+                  [source.id]: { status: 'error', message: err.response?.data?.detail || 'Connection failed' }
+              }));
+          }
+      });
   };
 
   useEffect(() => { fetchSources(); }, [page, filters]);
@@ -293,7 +377,23 @@ const DataSourcesPage = () => {
           <Database className="text-blue-500" /> 数据源
         </h2>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+              setFormData({ 
+                  name: '', 
+                  description: '',
+                  type: 'mysql', 
+                  connection_details: {
+                      host: 'localhost',
+                      port: 3306,
+                      user: 'root',
+                      password: '',
+                      database: ''
+                  }
+               });
+              setDuplicateError('');
+              setTestStatus(null);
+              setIsModalOpen(true);
+          }}
           className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors shadow-sm"
         >
           <Plus size={18} /> 添加数据源
@@ -320,7 +420,6 @@ const DataSourcesPage = () => {
                   <option value="">所有类型</option>
                   <option value="mysql">MySQL</option>
                   <option value="minio">MinIO (S3)</option>
-                  <option value="csv">CSV File</option>
               </select>
           </div>
       </div>
@@ -351,9 +450,26 @@ const DataSourcesPage = () => {
             </div>
             
             <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                    <CheckCircle size={12} /> 已连接
-                </div>
+                {connectionStatuses[source.id]?.status === 'loading' && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-200">
+                        <Loader2 size={12} className="animate-spin" /> 检测中...
+                    </div>
+                )}
+                {connectionStatuses[source.id]?.status === 'success' && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
+                        <CheckCircle size={12} /> 已连接
+                    </div>
+                )}
+                {connectionStatuses[source.id]?.status === 'error' && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-rose-600 bg-rose-50 px-2 py-1 rounded border border-rose-100" title={connectionStatuses[source.id]?.message}>
+                        <AlertTriangle size={12} /> 连接失败
+                    </div>
+                )}
+                {!connectionStatuses[source.id] && (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 bg-slate-50 px-2 py-1 rounded border border-slate-100">
+                        <Loader2 size={12} className="animate-spin" /> 等待检测...
+                    </div>
+                )}
                 <span className="text-xs text-slate-400 ml-auto font-mono">
                     ID: {source.id}
                 </span>
@@ -433,13 +549,29 @@ const DataSourcesPage = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">名称</label>
-            <input 
-              type="text" 
-              required
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
-              value={formData.name}
-              onChange={e => setFormData({...formData, name: e.target.value})}
-            />
+            <div className="relative">
+                <input 
+                  type="text" 
+                  required
+                  className={`w-full bg-slate-950 border rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 ${
+                      duplicateError 
+                      ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' 
+                      : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/20'
+                  }`}
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
+                />
+                {isCheckingDuplicate && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <Loader2 size={14} className="animate-spin text-slate-500" />
+                    </div>
+                )}
+            </div>
+            {duplicateError && (
+                <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle size={12} /> {duplicateError}
+                </p>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">数据类型描述</label>
@@ -461,7 +593,6 @@ const DataSourcesPage = () => {
               <option value="mysql">MySQL</option>
               <option value="clickhouse">ClickHouse</option>
               <option value="minio">MinIO (S3)</option>
-              <option value="csv">CSV File</option>
             </select>
           </div>
           
@@ -497,7 +628,13 @@ const DataSourcesPage = () => {
             </button>
             <div className="flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white">取消</button>
-                <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded">创建</button>
+                <button 
+                    type="submit" 
+                    disabled={!!duplicateError || isCheckingDuplicate}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    创建
+                </button>
             </div>
           </div>
         </form>
@@ -521,6 +658,30 @@ const DataSourcesPage = () => {
                   <div>
                       <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">描述</label>
                       <div className="text-slate-200 font-medium">{selectedSource.description || '-'}</div>
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">连接状态</label>
+                      <div className="flex items-center gap-2">
+                        {connectionStatuses[selectedSource.id]?.status === 'success' && (
+                            <span className="text-xs font-medium text-emerald-500 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-900/50 flex items-center gap-1">
+                                <CheckCircle size={12} /> 正常
+                            </span>
+                        )}
+                        {connectionStatuses[selectedSource.id]?.status === 'error' && (
+                            <div className="flex flex-col gap-1">
+                                <span className="text-xs font-medium text-rose-500 bg-rose-900/30 px-2 py-1 rounded border border-rose-900/50 flex items-center gap-1 w-fit">
+                                    <AlertTriangle size={12} /> 失败
+                                </span>
+                                <span className="text-xs text-rose-400 break-all">{connectionStatuses[selectedSource.id]?.message}</span>
+                            </div>
+                        )}
+                        {(connectionStatuses[selectedSource.id]?.status === 'loading' || !connectionStatuses[selectedSource.id]) && (
+                             <span className="text-xs font-medium text-slate-500 bg-slate-800 px-2 py-1 rounded border border-slate-700 flex items-center gap-1">
+                                <Loader2 size={12} className="animate-spin" /> 检测中...
+                            </span>
+                        )}
+                      </div>
                   </div>
                   
                   <div>

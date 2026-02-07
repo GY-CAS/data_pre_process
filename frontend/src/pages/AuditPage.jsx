@@ -155,11 +155,11 @@ const AuditPage = () => {
                     onChange={handleSelectAll}
                   />
               </th>
-              <th className="p-4 font-medium">时间</th>
               <th className="p-4 font-medium">用户</th>
               <th className="p-4 font-medium">行为</th>
               <th className="p-4 font-medium">资源</th>
               <th className="p-4 font-medium">详情</th>
+              <th className="p-4 font-medium">时间</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -175,9 +175,6 @@ const AuditPage = () => {
                         onChange={() => handleSelectOne(log.id)}
                     />
                 </td>
-                <td className="p-4 text-slate-500 text-sm font-mono whitespace-nowrap">
-                    {new Date(log.timestamp).toLocaleString()}
-                </td>
                 <td className="p-4 font-medium text-slate-700">{log.user_id}</td>
                 <td className="p-4 text-slate-600">
                     <span className={`px-2 py-1 rounded text-xs border flex items-center w-fit gap-1 ${
@@ -191,6 +188,9 @@ const AuditPage = () => {
                 </td>
                 <td className="p-4 text-slate-600 text-sm">{log.resource}</td>
                 <td className="p-4 text-slate-500 text-sm">{log.details || '-'}</td>
+                <td className="p-4 text-slate-500 text-sm font-mono whitespace-nowrap">
+                    {new Date(log.timestamp + 'Z').toLocaleString()}
+                </td>
               </tr>
             )})}
             {logs.length === 0 && (
