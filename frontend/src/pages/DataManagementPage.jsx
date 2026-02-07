@@ -299,7 +299,6 @@ const DataManagementPage = () => {
                   <option value="all">所有类型</option>
                   <option value="table">数据库表</option>
                   <option value="bucket">MinIO 存储桶</option>
-                  <option value="file">本地文件</option>
               </select>
           </div>
       </div>

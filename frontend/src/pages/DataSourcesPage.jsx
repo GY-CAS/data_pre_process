@@ -420,7 +420,6 @@ const DataSourcesPage = () => {
                   <option value="">所有类型</option>
                   <option value="mysql">MySQL</option>
                   <option value="minio">MinIO (S3)</option>
-                  <option value="csv">CSV File</option>
               </select>
           </div>
       </div>
@@ -594,7 +593,6 @@ const DataSourcesPage = () => {
               <option value="mysql">MySQL</option>
               <option value="clickhouse">ClickHouse</option>
               <option value="minio">MinIO (S3)</option>
-              <option value="csv">CSV File</option>
             </select>
           </div>
           
