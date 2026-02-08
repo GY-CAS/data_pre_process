@@ -7,9 +7,18 @@ from backend.app.models.audit import AuditLog
 from backend.app.services.spark_service import submit_spark_job
 from backend.app.services.sync_service import run_sync_task
 import logging
+import re
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 logger = logging.getLogger(__name__)
+
+def _redact_secrets(text: str | None) -> str | None:
+    if not text:
+        return text
+    redacted = text
+    redacted = re.sub(r"(mysql\+pymysql://[^:\s]+:)([^@\s]+)(@)", r"\1****\3", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r"((?:password|passwd|pwd)\s*[:=]\s*)([^,\s'\"\\]+)", r"\1****", redacted, flags=re.IGNORECASE)
+    return redacted
 
 @router.post("/", response_model=DataTask)
 def create_task(task: DataTask, session: Session = Depends(get_session)):
@@ -92,8 +101,16 @@ def run_spark_job_background(task_id: int):
             success, output = submit_spark_job(task)
             task.status = "success" if success else "failed"
             
-            # Audit Log for completion
-            log = AuditLog(user_id="system", action="task_completed", resource=task.name, details=f"Status: {task.status}")
+            from datetime import datetime
+            task.updated_at = datetime.utcnow()
+            if success:
+                task.progress = 100
+                log = AuditLog(user_id="system", action="task_completed", resource=task.name, details=f"Status: {task.status}")
+            else:
+                details = _redact_secrets(output) or "Spark job failed"
+                if len(details) > 8000:
+                    details = details[:8000] + "\n...<truncated>"
+                log = AuditLog(user_id="system", action="task_failed", resource=task.name, details=details)
             session.add(log)
             
         except Exception as e:
@@ -101,7 +118,7 @@ def run_spark_job_background(task_id: int):
             task.status = "failed"
             
             # Audit Log for failure
-            log = AuditLog(user_id="system", action="task_failed", resource=task.name, details=str(e))
+            log = AuditLog(user_id="system", action="task_failed", resource=task.name, details=_redact_secrets(str(e)))
             session.add(log)
         
         session.add(task)

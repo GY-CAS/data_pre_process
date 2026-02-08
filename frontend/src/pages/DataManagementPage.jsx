@@ -216,9 +216,9 @@ const DataManagementPage = () => {
   };
 
   const handleSaveClick = async () => {
-      // If MinIO, editing is not supported yet (it's object storage metadata)
-      if (selectedAsset.source === 'minio') {
-          alert("MinIO 资产暂不支持编辑元数据");
+      const editable = selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false;
+      if (!editable) {
+          alert("当前资产不支持编辑（可能缺少主键/行标识）");
           return;
       }
 
@@ -232,13 +232,9 @@ const DataManagementPage = () => {
   };
 
   const handleDeleteClick = async (rowId) => {
-      // If MinIO, deleting objects is possible but maybe restricted in this view?
-      // Let's block for now to be safe or implement later.
-      if (selectedAsset.source === 'minio') {
-          // rowId is ETag, we need Key to delete.
-          // The preview data has 'Key'.
-          // But rowId might not be enough if we don't look up the row.
-          alert("MinIO 资产暂不支持在此处删除对象");
+      const editable = selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false;
+      if (!editable) {
+          alert("当前资产不支持删除行（可能缺少主键/行标识）");
           return;
       }
 
@@ -452,7 +448,7 @@ const DataManagementPage = () => {
                     <table className="w-full text-left text-xs border-collapse">
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-slate-800 text-slate-300 shadow-sm">
-                                {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>}
+                                {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false && <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>}
                                 {previewContent.columns.filter(c => c !== '_rowid').map(col => (
                                     <th key={col} className="p-2 border border-slate-700 bg-slate-800 whitespace-nowrap">{col}</th>
                                 ))}
@@ -461,7 +457,7 @@ const DataManagementPage = () => {
                         <tbody>
                             {previewContent.data.map((row, i) => (
                                 <tr key={i} className="hover:bg-slate-800/50 group">
-                                    {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && (
+                                    {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false && (
                                         <td className="p-2 border border-slate-700 whitespace-nowrap">
                                             {editingRowId === row._rowid ? (
                                                 <div className="flex gap-2">

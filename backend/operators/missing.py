@@ -17,3 +17,11 @@ def fill_na(df: DataFrame, value=None, method: str = None, columns: list = None)
     # Implementation for mean/median can be added here
     # For MVP, we support constant fill
     return df
+
+def drop_na(df: DataFrame, columns: list = None) -> DataFrame:
+    """
+    Drop rows with missing values.
+    """
+    if columns:
+        return df.dropna(subset=columns)
+    return df.dropna()

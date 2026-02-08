@@ -1,7 +1,8 @@
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
     # DATABASE_URL: str = "sqlite:///database.db" # Removed to use property
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Data Preprocessing System"
@@ -42,9 +43,5 @@ class Settings(BaseSettings):
         if self.MYSQL_HOST and self.MYSQL_USER:
             return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}"
         return "sqlite:///database.db"
-    
-    class Config:
-        env_file = ".env"
-        extra = "ignore" # Ignore extra fields in .env
 
 settings = Settings()

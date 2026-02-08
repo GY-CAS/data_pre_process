@@ -20,7 +20,7 @@ class DataAsset(BaseModel):
     rows: Optional[int] = 0
 
 class RowUpdate(BaseModel):
-    row_id: int
+    row_id: str
     data: Dict[str, Any]
 
 from sqlmodel import Session, select
@@ -79,6 +79,69 @@ def get_ck_client():
         database='default'
     )
 
+def _mysql_quote_ident(name: str) -> str:
+    if "`" in name:
+        raise HTTPException(status_code=400, detail="Invalid identifier")
+    return f"`{name}`"
+
+def _ch_quote_ident(name: str) -> str:
+    if "`" in name:
+        raise HTTPException(status_code=400, detail="Invalid identifier")
+    if "." in name:
+        parts = name.split(".")
+        return ".".join(f"`{p}`" for p in parts)
+    return f"`{name}`"
+
+def _parse_ch_type(ch_type: str) -> str:
+    t = ch_type.strip()
+    if t.startswith("Nullable(") and t.endswith(")"):
+        return t[len("Nullable("):-1]
+    return t
+
+def _coerce_ch_value(value: Any, ch_type: str) -> Any:
+    if value is None:
+        return None
+    base = _parse_ch_type(ch_type)
+    if isinstance(value, str):
+        if value == "":
+            return None
+        if base.startswith(("Int", "UInt")):
+            try:
+                return int(value)
+            except Exception:
+                return value
+        if base.startswith(("Float", "Decimal")):
+            try:
+                return float(value)
+            except Exception:
+                return value
+        if base in ("Bool", "Boolean"):
+            lowered = value.lower()
+            if lowered in ("true", "1", "yes", "y"):
+                return 1
+            if lowered in ("false", "0", "no", "n"):
+                return 0
+            return value
+    return value
+
+def _get_clickhouse_columns_and_types(client: Client, table_name: str) -> Dict[str, str]:
+    desc = client.execute(f"DESCRIBE {_ch_quote_ident(table_name)}")
+    return {row[0]: row[1] for row in desc}
+
+def _pick_rowid_column(columns: List[str]) -> str:
+    if "id" in columns:
+        return "id"
+    return columns[0] if columns else "id"
+
+def _pick_mysql_rowid_column(inspector, table_name: str) -> Optional[str]:
+    pk_constraint = inspector.get_pk_constraint(table_name)
+    if pk_constraint and pk_constraint.get("constrained_columns"):
+        return pk_constraint["constrained_columns"][0]
+    cols = [c["name"] for c in inspector.get_columns(table_name)]
+    if "id" in cols:
+        return "id"
+    return None
+
 @router.get("/preview")
 def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: int = 0, session: Session = Depends(get_session)):
     # Check if file exists (Local File)
@@ -123,27 +186,27 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
             # Fetch from Target ClickHouse
             try:
                 client = get_ck_client()
+                column_types = _get_clickhouse_columns_and_types(client, path)
+                columns = list(column_types.keys())
+                rowid_col = _pick_rowid_column(columns)
                 # Get Total
-                total = client.execute(f"SELECT count(*) FROM {path}")[0][0]
+                total = client.execute(f"SELECT count(*) FROM {_ch_quote_ident(path)}")[0][0]
                 
                 # Get Data (ClickHouse doesn't support OFFSET without LIMIT properly, but LIMIT offset, limit works)
-                data = client.execute(f"SELECT * FROM {path} LIMIT {offset}, {limit}")
-                columns = [c[0] for c in client.execute(f"DESCRIBE {path}")]
+                data = client.execute(f"SELECT * FROM {_ch_quote_ident(path)} LIMIT {offset}, {limit}")
                 
                 # Map to dict
                 formatted_data = []
                 for row in data:
-                    # We need a _rowid. ClickHouse doesn't have stable rowid.
-                    # Use a fake one or try to find a PK?
-                    # For now, fake it based on offset.
                     row_dict = dict(zip(columns, row))
-                    row_dict['_rowid'] = 0 # Dummy, or generate
+                    row_dict["_rowid"] = row_dict.get(rowid_col)
                     formatted_data.append(row_dict)
 
                 return {
                     "columns": columns,
                     "data": formatted_data,
-                    "total": total
+                    "total": total,
+                    "meta": {"source": "clickhouse", "editable": True, "rowid_col": rowid_col}
                 }
             except Exception as e:
                  raise HTTPException(status_code=500, detail=f"ClickHouse Error: {str(e)}")
@@ -185,7 +248,8 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                  return {
                      "columns": ["Key", "Size", "LastModified"],
                      "data": data,
-                     "total": objs.get('KeyCount', 0) # Approximation or need to count
+                    "total": objs.get('KeyCount', 0), # Approximation or need to count
+                    "meta": {"source": "minio", "editable": False}
                  }
              except Exception as e:
                   raise HTTPException(status_code=500, detail=f"MinIO Preview Error: {str(e)}")
@@ -207,18 +271,28 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                 # For editing, we need a PK. Let's assume there is an 'id' column or similar.
                 # If the table was created by us (pandas to_sql), it might have an 'index' column if index=True, or no PK.
                 # For safety, let's try to find the PK.
-                pk_col = "id" # Default assumption
-                pk_constraint = inspector.get_pk_constraint(path)
-                if pk_constraint and pk_constraint['constrained_columns']:
-                    pk_col = pk_constraint['constrained_columns'][0]
+                rowid_col = _pick_mysql_rowid_column(inspector, path)
                 
                 # Fetch data
                 # Construct query. We simulate '_rowid' with the PK.
-                query = text(f"SELECT {pk_col} as _rowid, * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
+                if rowid_col:
+                    query = text(f"SELECT {_mysql_quote_ident(rowid_col)} as _rowid, * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
+                else:
+                    query = text(f"SELECT * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
                 try:
                     result = conn.execute(query)
                     columns = result.keys()
-                    data = [dict(zip(columns, row)) for row in result.fetchall()]
+                    raw_rows = result.fetchall()
+                    if "_rowid" in columns:
+                        data = [dict(zip(columns, row)) for row in raw_rows]
+                        editable = True
+                    else:
+                        data = []
+                        for idx, row in enumerate(raw_rows):
+                            row_dict = dict(zip(columns, row))
+                            row_dict["_rowid"] = offset + idx
+                            data.append(row_dict)
+                        editable = False
                 except Exception as query_err:
                     # Fallback if PK assumption fails or other issue
                     print(f"Query failed: {query_err}. Trying simple select.")
@@ -231,11 +305,13 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                          row_dict = dict(zip(columns, row))
                          row_dict['_rowid'] = offset + idx # Fake ID
                          data.append(row_dict)
+                    editable = False
                 
                 return {
                     "columns": list(columns),
                     "data": data,
-                    "total": total
+                    "total": total,
+                    "meta": {"source": "mysql", "editable": editable, "rowid_col": rowid_col if editable else None}
                 }
     except Exception as e:
         print(f"DB Error: {e}")
@@ -357,23 +433,43 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
     raise HTTPException(status_code=404, detail="Asset not found")
 
 @router.delete("/table/{table_name}/row/{row_id}")
-def delete_table_row(table_name: str, row_id: int, session: Session = Depends(get_session)):
+def delete_table_row(table_name: str, row_id: str, session: Session = Depends(get_session)):
     try:
-        engine = create_engine(settings.SYSTEM_DB_URL)
-        # Verify table exists to prevent injection
-        inspector = inspect(engine)
-        if table_name not in inspector.get_table_names():
-             raise HTTPException(status_code=404, detail="Table not found")
-             
-        # Find PK
-        pk_col = "id"
-        pk_constraint = inspector.get_pk_constraint(table_name)
-        if pk_constraint and pk_constraint['constrained_columns']:
-            pk_col = pk_constraint['constrained_columns'][0]
-             
-        with engine.connect() as conn:
-            conn.execute(text(f"DELETE FROM {table_name} WHERE {pk_col} = :row_id"), {"row_id": row_id})
-            conn.commit()
+        synced = session.exec(select(SyncedTable).where(SyncedTable.table_name == table_name)).first()
+        if synced and synced.source_type == "clickhouse":
+            client = get_ck_client()
+            column_types = _get_clickhouse_columns_and_types(client, table_name)
+            columns = list(column_types.keys())
+            if not columns:
+                raise HTTPException(status_code=400, detail="Empty ClickHouse table schema")
+            rowid_col = _pick_rowid_column(columns)
+            coerced_row_id = _coerce_ch_value(row_id, column_types.get(rowid_col, "String"))
+            client.execute(
+                f"ALTER TABLE {_ch_quote_ident(table_name)} DELETE WHERE {_ch_quote_ident(rowid_col)} = %(row_id)s",
+                {"row_id": coerced_row_id},
+            )
+        else:
+            engine = create_engine(settings.SYSTEM_DB_URL)
+            inspector = inspect(engine)
+            if table_name not in inspector.get_table_names():
+                raise HTTPException(status_code=404, detail="Table not found")
+            rowid_col = _pick_mysql_rowid_column(inspector, table_name)
+            if not rowid_col:
+                raise HTTPException(status_code=400, detail="Table has no primary key or id column; cannot delete rows")
+
+            safe_table = _mysql_quote_ident(table_name)
+            safe_rowid = _mysql_quote_ident(rowid_col)
+
+            with engine.connect() as conn:
+                dialect = engine.dialect.name
+                limit_clause = " LIMIT 1" if dialect == "mysql" else ""
+                result = conn.execute(
+                    text(f"DELETE FROM {safe_table} WHERE {safe_rowid} = :row_id{limit_clause}"),
+                    {"row_id": row_id},
+                )
+                conn.commit()
+                if result.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Row not found")
             
         # Add Audit Log
         session.add(AuditLog(
@@ -384,40 +480,80 @@ def delete_table_row(table_name: str, row_id: int, session: Session = Depends(ge
         ))
         session.commit()
         return {"ok": True}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/table/{table_name}/row/{row_id}")
-def update_table_row(table_name: str, row_id: int, update: RowUpdate, session: Session = Depends(get_session)):
+def update_table_row(table_name: str, row_id: str, update: RowUpdate, session: Session = Depends(get_session)):
     try:
-        engine = create_engine(settings.SYSTEM_DB_URL)
-        inspector = inspect(engine)
-        if table_name not in inspector.get_table_names():
-             raise HTTPException(status_code=404, detail="Table not found")
-             
-        # Find PK
-        pk_col = "id"
-        pk_constraint = inspector.get_pk_constraint(table_name)
-        if pk_constraint and pk_constraint['constrained_columns']:
-            pk_col = pk_constraint['constrained_columns'][0]
+        if update.row_id != row_id:
+            raise HTTPException(status_code=400, detail="row_id mismatch")
 
-        # Construct UPDATE query dynamically
-        set_clauses = []
-        params = {"row_id": row_id}
-        for key, value in update.data.items():
-            if key == "_rowid": continue # Skip ID
-            if key == pk_col: continue # Skip PK update for safety
-            set_clauses.append(f"{key} = :{key}")
-            params[key] = value
-            
-        if not set_clauses:
-            return {"ok": True} # Nothing to update
-            
-        query = f"UPDATE {table_name} SET {', '.join(set_clauses)} WHERE {pk_col} = :row_id"
-        
-        with engine.connect() as conn:
-            conn.execute(text(query), params)
-            conn.commit()
+        synced = session.exec(select(SyncedTable).where(SyncedTable.table_name == table_name)).first()
+        if synced and synced.source_type == "clickhouse":
+            client = get_ck_client()
+            column_types = _get_clickhouse_columns_and_types(client, table_name)
+            columns = list(column_types.keys())
+            if not columns:
+                raise HTTPException(status_code=400, detail="Empty ClickHouse table schema")
+            rowid_col = _pick_rowid_column(columns)
+            coerced_row_id = _coerce_ch_value(row_id, column_types.get(rowid_col, "String"))
+
+            set_parts = []
+            params: Dict[str, Any] = {"row_id": coerced_row_id}
+            for key, value in update.data.items():
+                if key in ("_rowid", rowid_col):
+                    continue
+                if key not in column_types:
+                    continue
+                set_parts.append(f"{_ch_quote_ident(key)} = %({key})s")
+                params[key] = _coerce_ch_value(value, column_types.get(key, "String"))
+
+            if not set_parts:
+                return {"ok": True}
+
+            client.execute(
+                f"ALTER TABLE {_ch_quote_ident(table_name)} UPDATE {', '.join(set_parts)} WHERE {_ch_quote_ident(rowid_col)} = %(row_id)s",
+                params,
+            )
+        else:
+            engine = create_engine(settings.SYSTEM_DB_URL)
+            inspector = inspect(engine)
+            if table_name not in inspector.get_table_names():
+                raise HTTPException(status_code=404, detail="Table not found")
+
+            rowid_col = _pick_mysql_rowid_column(inspector, table_name)
+            if not rowid_col:
+                raise HTTPException(status_code=400, detail="Table has no primary key or id column; cannot update rows")
+
+            table_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            safe_table = _mysql_quote_ident(table_name)
+            safe_rowid = _mysql_quote_ident(rowid_col)
+
+            set_clauses = []
+            params: Dict[str, Any] = {"row_id": row_id}
+            for key, value in update.data.items():
+                if key in ("_rowid", rowid_col):
+                    continue
+                if key not in table_cols:
+                    continue
+                set_clauses.append(f"{_mysql_quote_ident(key)} = :{key}")
+                params[key] = value
+
+            if not set_clauses:
+                return {"ok": True}
+
+            query = text(f"UPDATE {safe_table} SET {', '.join(set_clauses)} WHERE {safe_rowid} = :row_id LIMIT 1")
+            with engine.connect() as conn:
+                dialect = engine.dialect.name
+                limit_clause = " LIMIT 1" if dialect == "mysql" else ""
+                query = text(f"UPDATE {safe_table} SET {', '.join(set_clauses)} WHERE {safe_rowid} = :row_id{limit_clause}")
+                result = conn.execute(query, params)
+                conn.commit()
+                if result.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Row not found")
             
         # Add Audit Log
         session.add(AuditLog(
@@ -428,6 +564,8 @@ def update_table_row(table_name: str, row_id: int, update: RowUpdate, session: S
         ))
         session.commit()
         return {"ok": True}
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
