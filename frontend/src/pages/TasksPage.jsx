@@ -13,8 +13,8 @@ const TasksPage = () => {
   const [searchName, setSearchName] = useState('');
   const [formData, setFormData] = useState({ 
     name: '', 
-    task_type: 'preprocess', 
-    config: '' // Will be populated based on type
+    task_type: 'sync',
+    config: ''
   });
   
   // Pagination & Selection State
@@ -27,8 +27,9 @@ const TasksPage = () => {
   const [syncDetails, setSyncDetails] = useState({
       sourceId: '',
       sourceTable: '',
+      targetType: 'system_mysql',
       targetTable: '',
-      mode: 'append'
+      mode: 'overwrite'
   });
   const [sourceTables, setSourceTables] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
@@ -125,25 +126,7 @@ const TasksPage = () => {
     fetchSources();
     const interval = setInterval(fetchTasks, 5000); // Poll every 5s
     return () => clearInterval(interval);
-  }, [searchName, page, pageSize]); // Add pagination dependencies
-
-  // Update default config when task type changes
-  useEffect(() => {
-      if (formData.task_type === 'preprocess') {
-          setFormData(prev => ({
-              ...prev,
-              config: JSON.stringify({
-                job_name: "MyJob",
-                source: { type: "csv", path: "data/input.csv" },
-                operators: [{ type: "dedup" }],
-                target: { type: "csv", path: "data/output", mode: "overwrite" }
-              }, null, 2)
-          }));
-      } else if (formData.task_type === 'sync') {
-           // Clear manual config, we'll build it from UI
-           setFormData(prev => ({ ...prev, config: '' }));
-      }
-  }, [formData.task_type]);
+  }, [searchName, page, pageSize]);
 
   const handleRun = async (id) => {
     try {
@@ -206,7 +189,6 @@ const TasksPage = () => {
     try {
       let finalConfig = formData.config;
       
-      // If sync task, build config from UI
       if (formData.task_type === 'sync') {
           if (!syncDetails.sourceId || !syncDetails.sourceTable || !syncDetails.targetTable) {
               alert("Please complete all sync fields");
@@ -219,9 +201,11 @@ const TasksPage = () => {
                   table: syncDetails.sourceTable
               },
               target: {
+                  type: syncDetails.targetType,
                   table: syncDetails.targetTable,
                   mode: syncDetails.mode
-              }
+              },
+              operators: []
           };
           finalConfig = JSON.stringify(configObj);
       }
@@ -303,6 +287,7 @@ const TasksPage = () => {
               </th>
               {/* <th className="p-4 font-medium">任务ID</th> */}
               <th className="p-4 font-medium">名称</th>
+              <th className="p-4 font-medium">数据源类型</th>
               <th className="p-4 font-medium">类型</th>
               <th className="p-4 font-medium">状态</th>
               <th className="p-4 font-medium text-right">操作</th>
@@ -321,7 +306,29 @@ const TasksPage = () => {
                 </td>
                 {/* <td className="p-4 text-slate-500 font-mono">#{task.id}</td> */}
                 <td className="p-4 font-medium text-slate-700">{task.name}</td>
-                <td className="p-4 text-slate-600">{task.task_type === 'sync' ? '同步' : '预处理'}</td>
+                <td className="p-4 text-slate-600">
+                    {(() => {
+                        try {
+                            const config = JSON.parse(task.config);
+                            // We might need to look up source type from sources list if config only has source_id
+                            // But usually config also has 'source' object if manual, or we can fetch source details.
+                            // The backend stores source_id. Let's try to find it in 'sources' state.
+                            if (config.source_id) {
+                                const source = sources.find(s => s.id === config.source_id);
+                                return source ? source.type : '-';
+                            }
+                            // Fallback if manual config
+                            return config.source?.type || '-';
+                        } catch (e) {
+                            return '-';
+                        }
+                    })()}
+                </td>
+                <td className="p-4 text-slate-600">
+                    {task.task_type === 'sync' && '同步'}
+                    {task.task_type === 'sync_process' && '同步'}
+                    {task.task_type === 'preprocess' && '手动配置'}
+                </td>
                 <td className="p-4">
                   <div className="flex flex-col gap-2">
                       <div className="flex items-center gap-2">
@@ -477,20 +484,8 @@ const TasksPage = () => {
               onChange={e => setFormData({...formData, name: e.target.value})}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">任务类型</label>
-            <select 
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-              value={formData.task_type}
-              onChange={e => setFormData({...formData, task_type: e.target.value})}
-            >
-              <option value="preprocess">预处理 (Spark)</option>
-              <option value="sync">全量同步</option>
-            </select>
-          </div>
           
-          {formData.task_type === 'sync' ? (
-             <div className="space-y-4 p-4 bg-slate-800/50 rounded border border-slate-700">
+          <div className="space-y-4 p-4 bg-slate-800/50 rounded border border-slate-700">
                  <h4 className="text-sm font-semibold text-slate-300">同步配置</h4>
                  <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">源数据库</label>
@@ -498,10 +493,33 @@ const TasksPage = () => {
                       required
                       className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
                       value={syncDetails.sourceId}
-                      onChange={e => setSyncDetails({...syncDetails, sourceId: e.target.value, sourceTable: ''})}
+                      onChange={e => {
+                          const sid = e.target.value;
+                          setSyncDetails({...syncDetails, sourceId: sid, sourceTable: ''});
+                          
+                          // Auto-select target based on source
+                          if (sid) {
+                              const source = sources.find(s => s.id == sid);
+                              if (source) {
+                                  // Auto-match system DB type
+                                  if (source.type === 'clickhouse') {
+                                      setSyncDetails(prev => ({...prev, targetType: 'system_clickhouse', sourceId: sid, sourceTable: ''}));
+                                  } else if (source.type === 'mysql') {
+                                      setSyncDetails(prev => ({...prev, targetType: 'system_mysql', sourceId: sid, sourceTable: ''}));
+                                  } else if (source.type === 'minio') {
+                                      setSyncDetails(prev => ({...prev, targetType: 'system_minio', sourceId: sid, sourceTable: ''}));
+                                  } else {
+                                      // Default fallback
+                                      setSyncDetails(prev => ({...prev, targetType: 'system_mysql', sourceId: sid, sourceTable: ''}));
+                                  }
+                              }
+                          }
+                      }}
                     >
                       <option value="">选择数据源...</option>
-                      {sources.filter(s => ['mysql', 'clickhouse', 'minio'].includes(s.type)).map(s => (
+                      {sources.filter(s => {
+                          return ['mysql', 'clickhouse', 'minio'].includes(s.type);
+                      }).map(s => (
                           <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
                       ))}
                     </select>
@@ -537,53 +555,38 @@ const TasksPage = () => {
                  )}
 
                  <div>
+                    <label className="block text-sm font-medium text-slate-400 mb-1">目标存储</label>
+                    <select 
+                      className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      value={syncDetails.targetType}
+                      onChange={e => setSyncDetails({...syncDetails, targetType: e.target.value})}
+                      disabled={true} // Always disabled as per requirement: "not allow selecting other types"
+                    >
+                      <option value="system_mysql">系统数据库 (MySQL)</option>
+                      <option value="system_clickhouse">系统 ClickHouse (分析库)</option>
+                      <option value="system_minio">系统对象存储 (MinIO)</option>
+                    </select>
+                    <p className="text-xs text-emerald-500/80 mt-1">* 已自动匹配对应的系统数据库/存储</p>
+                 </div>
+
+                 <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">
-                        {(() => {
-                            const sourceType = sources.find(s => s.id == syncDetails.sourceId)?.type;
-                            if (sourceType === 'minio') return "目标 Bucket";
-                            if (sourceType === 'clickhouse') return "目标表 (ClickHouse)";
-                            return "目标表 (系统数据库)";
-                        })()}
+                        {syncDetails.targetType === 'system_minio' ? "目标 Bucket" : "目标表名"}
                     </label>
                     <input 
                       type="text" 
                       required
-                      placeholder={(() => {
-                          const sourceType = sources.find(s => s.id == syncDetails.sourceId)?.type;
-                          if (sourceType === 'minio') return "例如: processed-data";
-                          if (sourceType === 'clickhouse') return "例如: target_table_name";
-                          return "例如: synced_customers";
-                      })()}
+                      placeholder={syncDetails.targetType === 'system_minio' ? "例如: processed-data" : "例如: cleaned_data_v1"}
                       className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
                       value={syncDetails.targetTable}
                       onChange={e => setSyncDetails({...syncDetails, targetTable: e.target.value})}
                     />
                  </div>
-                 <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">同步模式</label>
-                    <select 
-                      className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                      value={syncDetails.mode}
-                      onChange={e => setSyncDetails({...syncDetails, mode: e.target.value})}
-                    >
-                      <option value="append">追加 (Append)</option>
-                      <option value="overwrite">覆盖 (Overwrite)</option>
-                    </select>
-                 </div>
+
                  <p className="text-xs text-slate-500 mt-2">
                      * 数据将从选定的源同步到内部系统数据库。
                  </p>
              </div>
-          ) : (
-            <div>
-                <label className="block text-sm font-medium text-slate-400 mb-1">配置 (JSON)</label>
-                <textarea 
-                className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 font-mono text-sm focus:outline-none focus:border-emerald-500 h-48"
-                value={formData.config}
-                onChange={e => setFormData({...formData, config: e.target.value})}
-                />
-            </div>
-          )}
 
           <div className="flex justify-end gap-3 mt-6">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white">取消</button>

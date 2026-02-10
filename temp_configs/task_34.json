@@ -1,0 +1,36 @@
+{
+  "source_id": 31,
+  "source": {
+    "table": "table1",
+    "type": "clickhouse"
+  },
+  "target": {
+    "type": "system_clickhouse",
+    "table": "sfds",
+    "mode": "overwrite"
+  },
+  "operators": [
+    {
+      "type": "dedup"
+    },
+    {
+      "type": "fill_na",
+      "value": "0123"
+    }
+  ],
+  "system_db_url": "mysql+pymysql://root:infini_rag_flow@localhost:3306/test_db",
+  "clickhouse": {
+    "host": "localhost",
+    "port": 9006,
+    "user": "admin",
+    "password": "admin"
+  },
+  "task_id": 34,
+  "source_connection": {
+    "host": "localhost",
+    "port": 9006,
+    "user": "admin",
+    "password": "admin",
+    "database": "db_test"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "source_id": 29,
+  "source": {
+    "table": "table1"
+  },
+  "target": {
+    "type": "system_clickhouse",
+    "table": "twerw",
+    "mode": "append"
+  },
+  "operators": [
+    {
+      "type": "dedup"
+    },
+    {
+      "type": "drop_na"
+    }
+  ],
+  "system_db_url": "mysql+pymysql://root:infini_rag_flow@localhost:3306/test_db",
+  "clickhouse": {
+    "host": "localhost",
+    "port": 9006,
+    "user": "admin",
+    "password": "admin"
+  },
+  "task_id": 27
+}
