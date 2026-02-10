@@ -13,8 +13,8 @@ const TasksPage = () => {
   const [searchName, setSearchName] = useState('');
   const [formData, setFormData] = useState({ 
     name: '', 
-    task_type: 'sync', 
-    config: '' // Will be populated based on type
+    task_type: 'sync',
+    config: ''
   });
   
   // Pagination & Selection State
@@ -27,25 +27,12 @@ const TasksPage = () => {
   const [syncDetails, setSyncDetails] = useState({
       sourceId: '',
       sourceTable: '',
-      targetType: 'system_mysql', // system_mysql, system_clickhouse, system_minio
+      targetType: 'system_mysql',
       targetTable: '',
-      mode: 'append'
+      mode: 'overwrite'
   });
   const [sourceTables, setSourceTables] = useState([]);
   const [isLoadingMetadata, setIsLoadingMetadata] = useState(false);
-  
-  // Data Processing State
-  const [enableProcessing, setEnableProcessing] = useState(false);
-  const [processingOps, setProcessingOps] = useState({
-      explore: false,
-      missing: { enabled: false, action: 'drop', value: '' },
-      dedup: false,
-      outliers: false,
-      standardize: false,
-      rename: { enabled: false, mapping: '' }
-  });
-
-  const [isProcessingModalOpen, setIsProcessingModalOpen] = useState(false);
 
   useEffect(() => {
     if (syncDetails.sourceId) {
@@ -58,15 +45,6 @@ const TasksPage = () => {
         setSourceTables([]);
     }
   }, [syncDetails.sourceId]);
-
-  // Auto-open processing modal when type is sync_process
-  useEffect(() => {
-      if (formData.task_type === 'sync_process') {
-          setIsProcessingModalOpen(true);
-      } else {
-          setIsProcessingModalOpen(false);
-      }
-  }, [formData.task_type]);
 
   const fetchTasks = async () => {
     try {
@@ -148,13 +126,7 @@ const TasksPage = () => {
     fetchSources();
     const interval = setInterval(fetchTasks, 5000); // Poll every 5s
     return () => clearInterval(interval);
-  }, [searchName, page, pageSize]); // Add pagination dependencies
-
-  // Update default config when task type changes
-  useEffect(() => {
-      // Clear manual config, we'll build it from UI for sync/sync_process
-      setFormData(prev => ({ ...prev, config: '' }));
-  }, [formData.task_type]);
+  }, [searchName, page, pageSize]);
 
   const handleRun = async (id) => {
     try {
@@ -217,45 +189,10 @@ const TasksPage = () => {
     try {
       let finalConfig = formData.config;
       
-      // If sync task, build config from UI
-      if (formData.task_type === 'sync' || formData.task_type === 'sync_process') {
+      if (formData.task_type === 'sync') {
           if (!syncDetails.sourceId || !syncDetails.sourceTable || !syncDetails.targetTable) {
               alert("Please complete all sync fields");
               return;
-          }
-          
-          const operators = [];
-          // Only add operators if it's a 'sync_process' task AND processing is enabled (which it should be by default)
-          if (formData.task_type === 'sync_process' && enableProcessing) {
-              if (processingOps.explore) operators.push({ type: 'explore' });
-              if (processingOps.dedup) operators.push({ type: 'dedup' });
-              if (processingOps.missing.enabled) {
-                  if (processingOps.missing.action === 'drop') {
-                      operators.push({ type: 'drop_na' });
-                  } else {
-                      operators.push({ type: 'fill_na', value: processingOps.missing.value });
-                  }
-              }
-              if (processingOps.outliers) operators.push({ type: 'outliers' });
-              if (processingOps.standardize) operators.push({ type: 'standardize' });
-              if (processingOps.rename.enabled && processingOps.rename.mapping) {
-                  try {
-                      // Parse "old:new" lines or JSON
-                      let mapping = {};
-                      if (processingOps.rename.mapping.trim().startsWith('{')) {
-                          mapping = JSON.parse(processingOps.rename.mapping);
-                      } else {
-                          processingOps.rename.mapping.split('\n').forEach(line => {
-                              const [oldName, newName] = line.split(':').map(s => s.trim());
-                              if (oldName && newName) mapping[oldName] = newName;
-                          });
-                      }
-                      operators.push({ type: 'rename', mapping });
-                  } catch (e) {
-                      alert("Invalid Rename Mapping format");
-                      return;
-                  }
-              }
           }
           
           const configObj = {
@@ -268,7 +205,7 @@ const TasksPage = () => {
                   table: syncDetails.targetTable,
                   mode: syncDetails.mode
               },
-              operators: operators
+              operators: []
           };
           finalConfig = JSON.stringify(configObj);
       }
@@ -389,7 +326,7 @@ const TasksPage = () => {
                 </td>
                 <td className="p-4 text-slate-600">
                     {task.task_type === 'sync' && '同步'}
-                    {task.task_type === 'sync_process' && '同步 + 预处理'}
+                    {task.task_type === 'sync_process' && '同步'}
                     {task.task_type === 'preprocess' && '手动配置'}
                 </td>
                 <td className="p-4">
@@ -547,28 +484,8 @@ const TasksPage = () => {
               onChange={e => setFormData({...formData, name: e.target.value})}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">任务类型</label>
-            <select 
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-              value={formData.task_type}
-              onChange={e => {
-                  const type = e.target.value;
-                  setFormData({...formData, task_type: type});
-                  if (type === 'sync_process') {
-                      setEnableProcessing(true);
-                  } else {
-                      setEnableProcessing(false);
-                  }
-              }}
-            >
-              <option value="sync">全量同步</option>
-              <option value="sync_process">全量同步 + 数据预处理</option>
-            </select>
-          </div>
           
-          {(formData.task_type === 'sync' || formData.task_type === 'sync_process') && (
-             <div className="space-y-4 p-4 bg-slate-800/50 rounded border border-slate-700">
+          <div className="space-y-4 p-4 bg-slate-800/50 rounded border border-slate-700">
                  <h4 className="text-sm font-semibold text-slate-300">同步配置</h4>
                  <div>
                     <label className="block text-sm font-medium text-slate-400 mb-1">源数据库</label>
@@ -601,10 +518,6 @@ const TasksPage = () => {
                     >
                       <option value="">选择数据源...</option>
                       {sources.filter(s => {
-                          // If sync_process, filter only mysql/clickhouse
-                          if (formData.task_type === 'sync_process') {
-                              return ['mysql', 'clickhouse'].includes(s.type);
-                          }
                           return ['mysql', 'clickhouse', 'minio'].includes(s.type);
                       }).map(s => (
                           <option key={s.id} value={s.id}>{s.name} ({s.type})</option>
@@ -669,158 +582,17 @@ const TasksPage = () => {
                       onChange={e => setSyncDetails({...syncDetails, targetTable: e.target.value})}
                     />
                  </div>
-                 <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-1">同步模式</label>
-                    <select 
-                      className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                      value={syncDetails.mode}
-                      onChange={e => setSyncDetails({...syncDetails, mode: e.target.value})}
-                    >
-                      <option value="append">追加 (Append)</option>
-                      <option value="overwrite">覆盖 (Overwrite)</option>
-                    </select>
-                 </div>
-
-                 {/* Data Processing Options - Only for sync_process */}
-                 {formData.task_type === 'sync_process' && (
-                     <div className="pt-4 border-t border-slate-700">
-                        <div className="flex justify-between items-center mb-3">
-                            <h4 className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                数据清洗/预处理
-                            </h4>
-                            <button 
-                                type="button"
-                                onClick={() => setIsProcessingModalOpen(true)}
-                                className="text-xs bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 rounded border border-slate-600 transition-colors"
-                            >
-                                配置选项
-                            </button>
-                        </div>
-                        <p className="text-xs text-slate-500">
-                            已启用: {[
-                                processingOps.missing.enabled && '缺失值处理',
-                                processingOps.dedup && '去重',
-                                processingOps.outliers && '异常值过滤',
-                                processingOps.standardize && '标准化',
-                            ].filter(Boolean).join(', ') || '无'}
-                        </p>
-                     </div>
-                 )}
 
                  <p className="text-xs text-slate-500 mt-2">
                      * 数据将从选定的源同步到内部系统数据库。
                  </p>
              </div>
-          )}
 
           <div className="flex justify-end gap-3 mt-6">
             <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-400 hover:text-white">取消</button>
             <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded">创建任务</button>
           </div>
         </form>
-      </Modal>
-
-      {/* Processing Options Modal */}
-      <Modal isOpen={isProcessingModalOpen} onClose={() => {
-          setIsProcessingModalOpen(false);
-          // If closed without confirm, maybe switch back to sync? 
-          // For now, let's assume it's just closing the options panel, but task type remains.
-          // Or we can force it open if task type is sync_process?
-          // Let's allow closing, but provide a button to reopen in the main form.
-      }} title="数据清洗/预处理选项">
-            <div className="space-y-4">
-                <p className="text-sm text-slate-400">请配置数据同步过程中的预处理规则。</p>
-                
-                <div className="space-y-3 pl-2 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-                    {/* Missing Values */}
-                    <div className="space-y-2 p-2 rounded hover:bg-slate-800/50 border border-transparent hover:border-slate-700">
-                        <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-emerald-400 transition-colors">
-                            <input 
-                                type="checkbox" 
-                                className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/30"
-                                checked={processingOps.missing.enabled}
-                                onChange={e => setProcessingOps({...processingOps, missing: {...processingOps.missing, enabled: e.target.checked}})}
-                            />
-                            <div>
-                                <div className="font-medium">处理缺失值</div>
-                            </div>
-                        </label>
-                        {processingOps.missing.enabled && (
-                            <div className="flex gap-2 pl-6 animate-in slide-in-from-top-1 duration-200">
-                                <select 
-                                    className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:border-emerald-500 outline-none"
-                                    value={processingOps.missing.action}
-                                    onChange={e => setProcessingOps({...processingOps, missing: {...processingOps.missing, action: e.target.value}})}
-                                >
-                                    <option value="drop">删除行</option>
-                                    <option value="fill">填充</option>
-                                </select>
-                                {processingOps.missing.action === 'fill' && (
-                                    <input 
-                                        type="text" 
-                                        placeholder="填充值..." 
-                                        className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 w-24 focus:border-emerald-500 outline-none"
-                                        value={processingOps.missing.value}
-                                        onChange={e => setProcessingOps({...processingOps, missing: {...processingOps.missing, value: e.target.value}})}
-                                    />
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Dedup */}
-                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-emerald-400 transition-colors p-2 rounded hover:bg-slate-800/50 border border-transparent hover:border-slate-700">
-                        <input 
-                            type="checkbox" 
-                            className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/30"
-                            checked={processingOps.dedup}
-                            onChange={e => setProcessingOps({...processingOps, dedup: e.target.checked})}
-                        />
-                        <div>
-                            <div className="font-medium">数据去重</div>
-                            <div className="text-xs text-slate-500">移除完全重复的行</div>
-                        </div>
-                    </label>
-
-                    {/* Outliers */}
-                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-emerald-400 transition-colors p-2 rounded hover:bg-slate-800/50 border border-transparent hover:border-slate-700">
-                        <input 
-                            type="checkbox" 
-                            className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/30"
-                            checked={processingOps.outliers}
-                            onChange={e => setProcessingOps({...processingOps, outliers: e.target.checked})}
-                        />
-                        <div>
-                            <div className="font-medium">处理异常值</div>
-                            <div className="text-xs text-slate-500">使用 IQR (四分位距) 过滤异常数值</div>
-                        </div>
-                    </label>
-
-                    {/* Standardize */}
-                    <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer hover:text-emerald-400 transition-colors p-2 rounded hover:bg-slate-800/50 border border-transparent hover:border-slate-700">
-                        <input 
-                            type="checkbox" 
-                            className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/30"
-                            checked={processingOps.standardize}
-                            onChange={e => setProcessingOps({...processingOps, standardize: e.target.checked})}
-                        />
-                        <div>
-                            <div className="font-medium">数据标准化</div>
-                            <div className="text-xs text-slate-500">对数值列进行 Z-Score 标准化</div>
-                        </div>
-                    </label>
-                </div>
-
-                <div className="flex justify-end pt-4 border-t border-slate-700">
-                    <button 
-                        onClick={() => setIsProcessingModalOpen(false)}
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded shadow-sm"
-                    >
-                        确认配置
-                    </button>
-                </div>
-            </div>
       </Modal>
 
       {/* Task Detail Modal */}
