@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from pydantic import BaseModel
 from sqlalchemy import create_engine, inspect, text
-from backend.app.core.config import settings
+from app.core.config import settings
 
 router = APIRouter(prefix="/data-mgmt", tags=["data-management"])
 
@@ -18,15 +18,16 @@ class DataAsset(BaseModel):
     size: str
     source: Optional[str] = None
     rows: Optional[int] = 0
+    data_type: Optional[str] = None  # TIMESERIES, IMAGE, NER
 
 class RowUpdate(BaseModel):
     row_id: str
     data: Dict[str, Any]
 
 from sqlmodel import Session, select
-from backend.app.core.db import get_session
-from backend.app.models.synced_table import SyncedTable
-from backend.app.models.audit import AuditLog
+from app.core.db import get_session
+from app.models.synced_table import SyncedTable
+from app.models.audit import AuditLog
 
 @router.get("/assets", response_model=List[DataAsset])
 def get_assets(session: Session = Depends(get_session)):
@@ -63,7 +64,8 @@ def get_assets(session: Session = Depends(get_session)):
             path=table.table_name, 
             size="-", # Size unknown for DB tables
             source=table.source_type, # Using source_type ('minio', 'clickhouse', 'mysql') as source for UI logic
-            rows=table.row_count
+            rows=table.row_count,
+            data_type=table.data_type
         ))
         
     return assets
@@ -224,7 +226,7 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
              
              try:
                  s3 = boto3.client('s3',
-                    endpoint_url=f"http://{settings.MINIO_ENDPOINT}" if not settings.MINIO_ENDPOINT.startswith("http") else settings.MINIO_ENDPOINT,
+                    endpoint_url=settings.MINIO_ENDPOINT,
                     aws_access_key_id=settings.MINIO_ROOT_USER,
                     aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
                     config=Config(signature_version='s3v4')
@@ -344,7 +346,7 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
                     from botocore.client import Config
                     try:
                         s3 = boto3.client('s3',
-                           endpoint_url=f"http://{settings.MINIO_ENDPOINT}" if not settings.MINIO_ENDPOINT.startswith("http") else settings.MINIO_ENDPOINT,
+                           endpoint_url=settings.MINIO_ENDPOINT,
                            aws_access_key_id=settings.MINIO_ROOT_USER,
                            aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
                            config=Config(signature_version='s3v4')
@@ -358,7 +360,7 @@ def delete_asset(name_or_id: str, type: Optional[str] = None, session: Session =
                                 s3.delete_objects(Bucket=name, Delete={'Objects': delete_keys})
                         s3.delete_bucket(Bucket=name)
                     except Exception as minio_err:
-                         if "NoSuchBucket" not in str(minio_err):
+                         if "NoSuchBucket" not in str(minio_err) and "InvalidBucketName" not in str(minio_err):
                              raise HTTPException(status_code=500, detail=f"MinIO Delete Error: {str(minio_err)}")
                  else:
                     # MySQL/System DB
@@ -755,7 +757,7 @@ def download_asset(name_or_id: str, format: str = "csv", session: Session = Depe
              from botocore.client import Config
              
              s3 = boto3.client('s3',
-                endpoint_url=f"http://{settings.MINIO_ENDPOINT}" if not settings.MINIO_ENDPOINT.startswith("http") else settings.MINIO_ENDPOINT,
+                endpoint_url=settings.MINIO_ENDPOINT,
                 aws_access_key_id=settings.MINIO_ROOT_USER,
                 aws_secret_access_key=settings.MINIO_ROOT_PASSWORD,
                 config=Config(signature_version='s3v4')
@@ -812,3 +814,54 @@ def download_asset(name_or_id: str, format: str = "csv", session: Session = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
     raise HTTPException(status_code=404, detail="Asset not found")
+
+# 在末尾添加新的API端点
+@router.get("/assets-complete")
+def get_complete_assets(session: Session = Depends(get_session)):
+    """
+    Get complete information about all data assets including their types and storage details
+    """
+    assets = []
+    
+    # 1. Query Synced Tables from Registry (includes all data sources)
+    synced_tables = session.exec(select(SyncedTable)).all()
+    for table in synced_tables:
+        asset = {
+            "id": table.id,
+            "name": table.table_name,
+            "type": "table" if table.source_type != "minio" else "bucket",
+            "data_type": table.data_type,
+            "source": table.source_type,
+            "source_name": table.source_name,
+            "row_count": table.row_count,
+            "created_at": table.created_at.isoformat() if table.created_at else None,
+            "updated_at": table.updated_at.isoformat() if table.updated_at else None,
+            "storage": {}
+        }
+        
+        # Add storage-specific details
+        if table.source_type == "mysql":
+            # MySQL data stored in SQLite
+            asset["storage"] = {
+                "type": "sqlite",
+                "location": "backend/database.db",
+                "table_name": table.table_name
+            }
+        elif table.source_type == "minio":
+            # MinIO data stored in object storage
+            asset["storage"] = {
+                "type": "minio",
+                "location": table.table_name,  # bucket name
+                "endpoint": "http://localhost:9000"  # MinIO endpoint
+            }
+        elif table.source_type == "clickhouse":
+            # ClickHouse data stored in ClickHouse server
+            asset["storage"] = {
+                "type": "clickhouse",
+                "location": table.table_name,  # table name in ClickHouse
+                "endpoint": "http://localhost:8123"  # ClickHouse HTTP endpoint
+            }
+        
+        assets.append(asset)
+    
+    return assets

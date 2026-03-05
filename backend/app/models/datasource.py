@@ -7,6 +7,7 @@ class DataSource(SQLModel, table=True):
     name: str = Field(index=True)
     description: Optional[str] = Field(default=None)
     type: str  # mysql, clickhouse, minio, etc.
+    data_type: Optional[str] = Field(default=None)  # IMAGE, TIMESERIES, NER
     connection_info: str  # JSON string
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

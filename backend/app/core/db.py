@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, create_engine, Session, text
-from backend.app.core.config import settings
+from app.core.config import settings
 from sqlalchemy.exc import OperationalError
 
 connect_args = {}

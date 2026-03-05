@@ -3,10 +3,10 @@ import json
 import os
 import sys
 from sqlmodel import Session
-from backend.app.models.task import DataTask
-from backend.app.models.datasource import DataSource
-from backend.app.core.db import engine
-from backend.app.core.config import settings
+from app.models.task import DataTask
+from app.models.datasource import DataSource
+from app.core.db import engine
+from app.core.config import settings
 
 def submit_spark_job(task: DataTask):
     # 1. Prepare Config File

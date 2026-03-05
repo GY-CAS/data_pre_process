@@ -314,7 +314,7 @@ const DataManagementPage = () => {
                                asset.type === 'bucket' ? <Folder size={24} /> :
                                <FileText size={24} />}
                           </div>
-                          <div className="flex gap-2 items-center">
+                          <div className="flex gap-2 items-center flex-wrap">
                               <span className={`text-xs font-mono border px-2 py-0.5 rounded ${
                                   asset.type === 'table' ? 'border-purple-200 text-purple-600 bg-purple-50' : 
                                   asset.type === 'bucket' ? 'border-orange-200 text-orange-600 bg-orange-50' :
@@ -322,6 +322,16 @@ const DataManagementPage = () => {
                               }`}>
                                   {asset.source || asset.type}
                               </span>
+                              {asset.data_type && (
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${
+                                  asset.data_type === 'IMAGE' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                                  asset.data_type === 'TIMESERIES' ? 'bg-green-50 text-green-600 border-green-200' :
+                                  asset.data_type === 'NER' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                  'bg-slate-100 text-slate-500 border-slate-200'
+                                }`}>
+                                  {asset.data_type}
+                                </span>
+                              )}
                               {/* Delete Button (always visible) */}
                               <button 
                                   onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}

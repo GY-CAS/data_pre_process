@@ -1,15 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from backend.app.core.db import create_db_and_tables
-from backend.app.api import datasource, task, audit, data_management
+from app.api import datasource, task, audit, data_management
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    create_db_and_tables()
-    yield
-
-app = FastAPI(lifespan=lifespan, title="Data Preprocessing System API")
+app = FastAPI(title="Data Preprocessing System API")
 
 app.add_middleware(
     CORSMiddleware,

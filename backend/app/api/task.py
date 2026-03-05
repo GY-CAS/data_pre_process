@@ -1,23 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select, func, col
 from typing import List, Dict, Any
-from backend.app.core.db import get_session, engine
-from backend.app.models.task import DataTask
-from backend.app.models.audit import AuditLog
-from backend.app.services.spark_service import submit_spark_job
-from backend.app.services.sync_service import run_sync_task
+from app.core.db import get_session, engine
+from app.models.task import DataTask
+from app.models.audit import AuditLog
+from app.services.spark_service import submit_spark_job
+from app.services.sync_service import run_sync_task
 import logging
 import re
+from typing import Optional
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 logger = logging.getLogger(__name__)
 
-def _redact_secrets(text: str | None) -> str | None:
+def _redact_secrets(text: Optional[str]) -> Optional[str]:
     if not text:
         return text
     redacted = text
     redacted = re.sub(r"(mysql\+pymysql://[^:\s]+:)([^@\s]+)(@)", r"\1****\3", redacted, flags=re.IGNORECASE)
-    redacted = re.sub(r"((?:password|passwd|pwd)\s*[:=]\s*)([^,\s'\"\\]+)", r"\1****", redacted, flags=re.IGNORECASE)
+    redacted = re.sub(r'((?:password|passwd|pwd)\s*[:=]\s*)([^,\s\'\"\\]+)', r'\1****', redacted, flags=re.IGNORECASE)
     return redacted
 
 @router.post("/", response_model=DataTask)

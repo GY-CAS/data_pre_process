@@ -17,7 +17,8 @@ const DataSourcesPage = () => {
   const [formData, setFormData] = useState({ 
       name: '', 
       description: '',
-      type: 'mysql', 
+      type: 'mysql',
+      data_type: 'IMAGE',
       connection_details: {
           host: 'localhost',
           port: 3306,
@@ -33,7 +34,7 @@ const DataSourcesPage = () => {
      if (formData.type === 'clickhouse') {
          setFormData(prev => ({
              ...prev,
-             connection_details: { ...prev.connection_details, port: 9000, user: 'default', database: 'default' }
+             connection_details: { ...prev.connection_details, port: 9002, user: 'default', database: 'default' }
          }));
      } else if (formData.type === 'mysql') {
          setFormData(prev => ({
@@ -199,6 +200,7 @@ const DataSourcesPage = () => {
           name: formData.name,
           description: formData.description,
           type: formData.type,
+          data_type: formData.data_type,
           connection_info: JSON.stringify(formData.connection_details)
       };
       await createDataSource(payload);
@@ -208,7 +210,8 @@ const DataSourcesPage = () => {
       setFormData({ 
           name: '', 
           description: '',
-          type: 'mysql', 
+          type: 'mysql',
+          data_type: 'IMAGE',
           connection_details: {
             host: 'localhost',
             port: 3306,
@@ -281,7 +284,7 @@ const DataSourcesPage = () => {
                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                         value={connection_details.port}
                         onChange={e => handleInputChange('port', parseInt(e.target.value))}
-                        placeholder={type === 'clickhouse' ? "9000" : "3306"}
+                        placeholder={type === 'clickhouse' ? "9002" : "3306"}
                         />
                     </div>
                 </div>
@@ -381,7 +384,8 @@ const DataSourcesPage = () => {
               setFormData({ 
                   name: '', 
                   description: '',
-                  type: 'mysql', 
+                  type: 'mysql',
+                  data_type: 'IMAGE',
                   connection_details: {
                       host: 'localhost',
                       port: 3306,
@@ -419,6 +423,7 @@ const DataSourcesPage = () => {
               >
                   <option value="">所有类型</option>
                   <option value="mysql">MySQL</option>
+                  <option value="clickhouse">ClickHouse</option>
                   <option value="minio">MinIO (S3)</option>
               </select>
           </div>
@@ -431,9 +436,21 @@ const DataSourcesPage = () => {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-semibold text-lg text-slate-800">{source.name}</h3>
-                <span className="text-xs text-slate-500 uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded border border-slate-200 mt-1 inline-block font-medium">
-                  {source.type}
-                </span>
+                <div className="flex gap-2 mt-1">
+                  <span className="text-xs text-slate-500 uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block font-medium">
+                    {source.type}
+                  </span>
+                  {source.data_type && (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded border inline-block ${
+                      source.data_type === 'IMAGE' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                      source.data_type === 'TIMESERIES' ? 'bg-green-50 text-green-600 border-green-200' :
+                      source.data_type === 'NER' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                      'bg-slate-100 text-slate-500 border-slate-200'
+                    }`}>
+                      {source.data_type}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2">
                   <button 
@@ -593,6 +610,20 @@ const DataSourcesPage = () => {
               <option value="mysql">MySQL</option>
               <option value="clickhouse">ClickHouse</option>
               <option value="minio">MinIO (S3)</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-400 mb-1">数据类型</label>
+            <select 
+              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+              value={formData.data_type}
+              onChange={e => setFormData({...formData, data_type: e.target.value})}
+            >
+              {formData.type === 'minio' && (
+                <option value="IMAGE">IMAGE（图像数据）</option>
+              )}
+              <option value="TIMESERIES">TIMESERIES（时序数据）</option>
+              <option value="NER">NER（命名实体识别）</option>
             </select>
           </div>
           

@@ -8,5 +8,6 @@ class SyncedTable(SQLModel, table=True):
     source_type: str
     source_name: str
     row_count: int = Field(default=0)
+    data_type: Optional[str] = Field(default=None)  # TIMESERIES, IMAGE, NER
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

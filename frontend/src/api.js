@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = 'http://127.0.0.1:8001';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -47,5 +47,6 @@ export const downloadDataAsset = (name, format = 'csv') => api.get(`/data-mgmt/d
 // The backend returns JSON for MinIO, Blob for others. 
 // We might need to handle responseType dynamically or parse blob if JSON?
 // Let's use 'blob' but check if type is json in caller.
-
+// 在文件末尾添加新的API调用
+export const getCompleteAssets = () => api.get('/data-mgmt/assets-complete');
 export default api;

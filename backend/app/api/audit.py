@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlmodel import Session, select, func, col
 from typing import List, Optional, Dict, Any
-from backend.app.core.db import get_session
-from backend.app.models.audit import AuditLog
+from app.core.db import get_session
+from app.models.audit import AuditLog
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 

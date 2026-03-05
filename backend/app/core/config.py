@@ -22,14 +22,16 @@ class Settings(BaseSettings):
 
     # ClickHouse Configuration
     CK_HOST: str = "localhost"
-    CK_PORT: int = 9000
+    CK_PORT: int = 9002
     CK_USER: str = "default"
-    CK_PASSWORD: str = ""
+    CK_PASSWORD: str = "default"
 
     # MinIO Configuration
-    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ENDPOINT: str = "http://localhost:9000"
     MINIO_ROOT_USER: str = "minioadmin"
     MINIO_ROOT_PASSWORD: str = "minioadmin"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
     
     # CK_DB is not in env, defaulting to 'default' or handled dynamically?
     # User env has CK_host, CK_port, CK_user, CK_password.
@@ -39,9 +41,7 @@ class Settings(BaseSettings):
     # BaseSettings reads from .env.
 
     def get_database_url(self) -> str:
-        # Use MySQL if configured, otherwise fallback to SQLite
-        if self.MYSQL_HOST and self.MYSQL_USER:
-            return f"mysql+pymysql://{self.MYSQL_USER}:{self.MYSQL_PASSWORD}@{self.MYSQL_HOST}:{self.MYSQL_PORT}/{self.MYSQL_DB}"
+        # Use SQLite for simplicity in development
         return "sqlite:///database.db"
 
 settings = Settings()
