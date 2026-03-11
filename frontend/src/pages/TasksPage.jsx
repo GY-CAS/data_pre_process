@@ -497,21 +497,12 @@ const TasksPage = () => {
                           const sid = e.target.value;
                           setSyncDetails({...syncDetails, sourceId: sid, sourceTable: ''});
                           
-                          // Auto-select target based on source
+                          // Auto-select target based on source type - All sources go to MinIO
                           if (sid) {
                               const source = sources.find(s => s.id == sid);
                               if (source) {
-                                  // Auto-match system DB type
-                                  if (source.type === 'clickhouse') {
-                                      setSyncDetails(prev => ({...prev, targetType: 'system_clickhouse', sourceId: sid, sourceTable: ''}));
-                                  } else if (source.type === 'mysql') {
-                                      setSyncDetails(prev => ({...prev, targetType: 'system_mysql', sourceId: sid, sourceTable: ''}));
-                                  } else if (source.type === 'minio') {
-                                      setSyncDetails(prev => ({...prev, targetType: 'system_minio', sourceId: sid, sourceTable: ''}));
-                                  } else {
-                                      // Default fallback
-                                      setSyncDetails(prev => ({...prev, targetType: 'system_mysql', sourceId: sid, sourceTable: ''}));
-                                  }
+                                  // All sources -> MinIO only
+                                  setSyncDetails(prev => ({...prev, targetType: 'system_minio', sourceId: sid, sourceTable: ''}));
                               }
                           }
                       }}
@@ -560,13 +551,13 @@ const TasksPage = () => {
                       className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                       value={syncDetails.targetType}
                       onChange={e => setSyncDetails({...syncDetails, targetType: e.target.value})}
-                      disabled={false} // 允许用户选择目标存储类型
+                      disabled={false}
                     >
-                      <option value="system_mysql">系统数据库 (MySQL)</option>
-                      <option value="system_clickhouse">系统 ClickHouse (分析库)</option>
                       <option value="system_minio">系统对象存储 (MinIO)</option>
                     </select>
-                    <p className="text-xs text-emerald-500/80 mt-1">* 可选择目标存储类型</p>
+                    <p className="text-xs text-emerald-500/80 mt-1">
+                        * 数据将同步到MinIO对象存储
+                    </p>
                  </div>
 
                  <div>
