@@ -8,3 +8,4 @@ requests
 pymysql
 boto3
 clickhouse-driver
+pydantic-settings

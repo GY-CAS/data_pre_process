@@ -1,0 +1,31 @@
+#minio 
+docker run -d \
+  --name minio-server \
+  -p 9000:9000 \
+  -p 9001:9001 \
+  -e "MINIO_ROOT_USER=your_admin_name" \  # 替换为你的账户名
+  -e "MINIO_ROOT_PASSWORD=your_admin_password" \  # 替换为你的密码（≥8位）
+  -v /path/to/your/data:/data \  # 本地数据目录映射到容器内（持久化数据）
+  -v /path/to/your/config:/root/.minio \  # 配置文件持久化（可选）
+  minio/minio server /data --console-address ":9001"
+
+#mysql
+
+docker run -d \
+  --name mysql-server \  # 容器命名，方便管理
+  -p 3306:3306 \         # 端口映射：宿主机3306 → 容器3306
+  -e "MYSQL_ROOT_PASSWORD=Root@123456" \  # 必选：设置root密码（建议强密码）
+  -e "MYSQL_USER=app_user" \              # 可选：创建普通账户
+  -e "MYSQL_PASSWORD=App@67890" \         # 可选：普通账户密码
+  -e "MYSQL_DATABASE=app_db" \            # 可选：自动创建初始数据库
+  -v /opt/mysql/data:/var/lib/mysql \     # 数据持久化（关键：容器删除数据不丢）
+  -v /opt/mysql/conf:/etc/mysql/conf.d \  # 自定义配置文件（可选）
+  --restart=always \                      # 开机自启（可选，生产推荐）
+  mysql:8.0 \                             # MySQL版本（推荐8.0，也可写5.7）
+  --character-set-server=utf8mb4 \        # 设置默认字符集（避免中文乱码）
+  --collation-server=utf8mb4_unicode_ci
+
+
+#clickhouse
+
+
