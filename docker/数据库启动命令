@@ -3,8 +3,8 @@ docker run -d \
   --name minio-server \
   -p 9000:9000 \
   -p 9001:9001 \
-  -e "MINIO_ROOT_USER=your_admin_name" \  # 替换为你的账户名
-  -e "MINIO_ROOT_PASSWORD=your_admin_password" \  # 替换为你的密码（≥8位）
+  -e "MINIO_ROOT_USER=admin" \  # 替换为你的账户名
+  -e "MINIO_ROOT_PASSWORD=admin" \  # 替换为你的密码（≥8位）
   -v /path/to/your/data:/data \  # 本地数据目录映射到容器内（持久化数据）
   -v /path/to/your/config:/root/.minio \  # 配置文件持久化（可选）
   minio/minio server /data --console-address ":9001"
@@ -14,10 +14,10 @@ docker run -d \
 docker run -d \
   --name mysql-server \  # 容器命名，方便管理
   -p 3306:3306 \         # 端口映射：宿主机3306 → 容器3306
-  -e "MYSQL_ROOT_PASSWORD=Root@123456" \  # 必选：设置root密码（建议强密码）
-  -e "MYSQL_USER=app_user" \              # 可选：创建普通账户
-  -e "MYSQL_PASSWORD=App@67890" \         # 可选：普通账户密码
-  -e "MYSQL_DATABASE=app_db" \            # 可选：自动创建初始数据库
+  -e "MYSQL_ROOT_PASSWORD=123456" \  # 必选：设置root密码（建议强密码）
+  -e "MYSQL_USER=admin" \              # 可选：创建普通账户
+  -e "MYSQL_PASSWORD=admin" \         # 可选：普通账户密码
+  -e "MYSQL_DATABASE=test_db" \            # 可选：自动创建初始数据库
   -v /opt/mysql/data:/var/lib/mysql \     # 数据持久化（关键：容器删除数据不丢）
   -v /opt/mysql/conf:/etc/mysql/conf.d \  # 自定义配置文件（可选）
   --restart=always \                      # 开机自启（可选，生产推荐）
@@ -27,5 +27,20 @@ docker run -d \
 
 
 #clickhouse
+docker run -d \
+  --name clickhouse-server \
+  -p 8123:8123 \
+  -p 9000:9000 \
+  --ulimit nofile=262144:262144 \
+  yandex/clickhouse-server
 
 
+#Sometimes you may want to create a user (user named default is used by default) and database on a container start. You can do it using environment variables CLICKHOUSE_DB, CLICKHOUSE_USER, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT and CLICKHOUSE_PASSWORD:
+
+#docker run --rm -e \
+#  CLICKHOUSE_DB=my_database \
+#  -e CLICKHOUSE_USER=username \
+#  -e CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+#  -e CLICKHOUSE_PASSWORD=password \
+#  -p 9000:9000/tcp \
+#  clickhouse
