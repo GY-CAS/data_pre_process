@@ -7,10 +7,28 @@ from app.models.datasource import DataSource
 from app.models.audit import AuditLog
 import json
 
-router = APIRouter(prefix="/datasources", tags=["datasources"])
+router = APIRouter(prefix="/datasources", tags=["DataSources"])
 
-@router.post("/", response_model=DataSource)
+@router.post(
+    "/", 
+    response_model=DataSource,
+    status_code=201,
+    summary="创建数据源",
+    description="创建一个新的数据源连接配置。支持 MySQL、ClickHouse、MinIO、CSV 等类型。",
+    responses={
+        201: {"description": "数据源创建成功"},
+        400: {"description": "数据源已存在或参数无效"}
+    }
+)
 def create_datasource(datasource: DataSource, session: Session = Depends(get_session)):
+    """
+    创建数据源
+    
+    - **name**: 数据源名称（唯一标识）
+    - **type**: 数据源类型 (mysql/clickhouse/minio/csv)
+    - **description**: 数据源描述
+    - **connection_info**: JSON格式的连接配置
+    """
     # Check for duplicates (Same Name + Same Type)
     existing = session.exec(select(DataSource).where(DataSource.name == datasource.name, DataSource.type == datasource.type)).first()
     if existing:

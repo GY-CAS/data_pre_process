@@ -75,7 +75,7 @@ MINIO_ROOT_PASSWORD=minioadmin
 pip install -r backend/requirements.txt
 
 # 启动后端服务 (默认端口 8000)
-python -m uvicorn backend.app.main:app --reload
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 后端 API 文档地址: http://127.0.0.1:8000/docs
@@ -97,29 +97,6 @@ npm run dev
 
 访问前端页面: http://localhost:3000/
 
-## 📂 项目结构
-
-```
-data_pre_process/
-├── backend/                # 后端代码
-│   ├── app/
-│   │   ├── api/            # API 路由接口
-│   │   ├── core/           # 核心配置与数据库连接
-│   │   ├── models/         # 数据库模型 (SQLModel)
-│   │   └── services/       # 业务逻辑服务 (Sync, Spark)
-│   ├── operators/          # 数据处理算子
-│   ├── spark_jobs/         # Spark 任务脚本
-│   └── requirements.txt    # Python 依赖
-├── frontend/               # 前端代码
-│   ├── src/
-│   │   ├── components/     # 通用组件
-│   │   ├── pages/          # 页面组件 (Tasks, DataSources, etc.)
-│   │   └── api.js          # API 接口定义
-│   └── package.json        # Node.js 依赖
-├── data/                   # 本地数据存储目录
-├── .env                    # 环境变量配置文件
-└── README.md               # 项目说明文档
-```
 
 ## ✨ 页面展示
 

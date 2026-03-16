@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const getBackendUrl = () => {
+  if (typeof window !== 'undefined' && window.__BACKEND_URL__ && window.__BACKEND_URL__ !== '__BACKEND_URL__') {
+    return window.__BACKEND_URL__;
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env?.BACKEND_SERVICE_URL) {
+    return import.meta.env.BACKEND_SERVICE_URL;
+  }
+  return 'http://localhost:8000';
+};
+
+const API_BASE_URL = getBackendUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
