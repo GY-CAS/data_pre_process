@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Database, Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Info, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getDataSources, createDataSource, deleteDataSource, testDataSourceConnection } from '../api';
 import { Modal } from '../components/Common';
@@ -92,7 +92,7 @@ const DataSourcesPage = () => {
     return () => clearTimeout(timer);
   }, [formData.name, formData.type, isModalOpen]);
 
-  const fetchSources = async () => {
+  const fetchSources = useCallback(async () => {
     try {
       const params = {
           skip: (page - 1) * pageSize,
@@ -106,12 +106,13 @@ const DataSourcesPage = () => {
       setSources(data);
       setTotal(res.data.total);
 
-      // Check connections for all loaded sources
       checkAllConnections(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [page, filters]);
+
+  useEffect(() => { fetchSources(); }, [fetchSources]);
 
   const checkAllConnections = async (sourceList) => {
       // Initialize status to loading

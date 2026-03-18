@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, Plus, Play, AlertCircle, Loader2, Search, Trash2, Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getTasks, createTask, deleteTask, deleteTasks, runTask, getDataSources, getAuditLogs, getDataSourceMetadata } from '../api';
 import { Modal, StatusBadge } from '../components/Common';

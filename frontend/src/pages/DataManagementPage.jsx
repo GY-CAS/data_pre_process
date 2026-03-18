@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow, downloadDataAsset } from '../api';
 import { Modal } from '../components/Common';
@@ -28,11 +28,20 @@ const DataManagementPage = () => {
 
   const [editingRowId, setEditingRowId] = useState(null);
   const [editData, setEditData] = useState({});
-  const [selectedAssetIds, setSelectedAssetIds] = useState([]); // For bulk delete
+
+  const fetchAssets = useCallback(async () => {
+    try {
+      const res = await getDataAssets();
+      setAssets(res.data);
+      setTotal(res.data.length);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
 
   useEffect(() => {
     fetchAssets();
-  }, []);
+  }, [fetchAssets]);
 
   useEffect(() => {
       let result = assets;
@@ -53,16 +62,6 @@ const DataManagementPage = () => {
       const end = start + pageSize;
       setFilteredAssets(result.slice(start, end));
   }, [assets, searchTerm, filterType, page, pageSize]);
-
-  const fetchAssets = async () => {
-    try {
-      const res = await getDataAssets();
-      setAssets(res.data);
-      setTotal(res.data.length); // Initialize total
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleDeleteAsset = async (asset) => {
       // 1. Double check before deletion
@@ -170,7 +169,7 @@ const DataManagementPage = () => {
                       setMinioLinks(json.links); // Reuse previewContent for links
                       return;
                   }
-              } catch (e) {
+              } catch {
                   // Not JSON, proceed as file
               }
           }

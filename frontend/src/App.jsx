@@ -1,9 +1,25 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Database, Server, Folder, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, Database, Folder, ShieldAlert } from 'lucide-react';
 import DataSourcesPage from './pages/DataSourcesPage';
 import TasksPage from './pages/TasksPage';
 import DataManagementPage from './pages/DataManagementPage';
 import AuditPage from './pages/AuditPage';
+
+const NavButton = ({ id, icon, label, activeTab, setActiveTab }) => {
+  const Icon = icon;
+  return (
+    <button 
+      onClick={() => setActiveTab(id)}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+        activeTab === id 
+          ? 'bg-blue-50 text-blue-600 font-semibold' 
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+      }`}
+    >
+      {Icon && <Icon size={18} />} {label}
+    </button>
+  );
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState('datasources');
@@ -28,19 +44,6 @@ function App() {
     }
   };
 
-  const NavButton = ({ id, icon: Icon, label }) => (
-    <button 
-      onClick={() => setActiveTab(id)}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
-        activeTab === id 
-          ? 'bg-blue-50 text-blue-600 font-semibold' 
-          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-      }`}
-    >
-      <Icon size={18} /> {label}
-    </button>
-  );
-
   return (
     <div className="flex h-screen bg-white text-slate-800 font-sans selection:bg-blue-100">
       {/* Sidebar */}
@@ -58,10 +61,10 @@ function App() {
         </div>
         
         <nav className="flex-1 p-4 space-y-1">
-          <NavButton id="datasources" icon={Database} label="数据引接" />
-          <NavButton id="tasks" icon={LayoutDashboard} label="数据同步" />
-          <NavButton id="datamgmt" icon={Folder} label="数据管理" />
-          <NavButton id="audit" icon={ShieldAlert} label="行为预警" />
+          <NavButton id="datasources" icon={Database} label="数据引接" activeTab={activeTab} setActiveTab={setActiveTab} />
+          <NavButton id="tasks" icon={LayoutDashboard} label="数据同步" activeTab={activeTab} setActiveTab={setActiveTab} />
+          <NavButton id="datamgmt" icon={Folder} label="数据管理" activeTab={activeTab} setActiveTab={setActiveTab} />
+          <NavButton id="audit" icon={ShieldAlert} label="行为预警" activeTab={activeTab} setActiveTab={setActiveTab} />
         </nav>
       </aside>
 

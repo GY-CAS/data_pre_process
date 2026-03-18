@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldAlert, Search, AlertTriangle, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getAuditLogs, deleteAuditLogs } from '../api';
 
@@ -14,7 +14,7 @@ const AuditPage = () => {
   // Selection state
   const [selectedIds, setSelectedIds] = useState([]);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     try {
       const params = {
           skip: (page - 1) * pageSize,
@@ -24,23 +24,20 @@ const AuditPage = () => {
       if (filters.action) params.action = filters.action;
       
       const res = await getAuditLogs(params);
-      // Support both old and new response structure just in case, but we know it's new
       const items = res.data.items || res.data;
       const totalCount = res.data.total || (Array.isArray(res.data) ? res.data.length : 0);
       
       setLogs(items);
       setTotal(totalCount);
-      // Clear selection on refresh/page change if desired, or keep it? 
-      // Usually clear on page change is safer to avoid confusion
       setSelectedIds([]); 
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [page, pageSize, filters.user_id, filters.action]);
 
   useEffect(() => {
     fetchLogs();
-  }, [page, pageSize]); // Refetch when page changes
+  }, [fetchLogs]);
 
   const handleSearch = (e) => {
       e.preventDefault();

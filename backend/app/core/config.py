@@ -30,8 +30,6 @@ class Settings(BaseSettings):
     MINIO_ENDPOINT: str = "http://localhost:9000"
     MINIO_ROOT_USER: str = "minioadmin"
     MINIO_ROOT_PASSWORD: str = "minioadmin"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
     
     # CK_DB is not in env, defaulting to 'default' or handled dynamically?
     # User env has CK_host, CK_port, CK_user, CK_password.
