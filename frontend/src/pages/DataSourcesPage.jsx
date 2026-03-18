@@ -1,35 +1,48 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Info, X, Search, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getDataSources, createDataSource, deleteDataSource, testDataSourceConnection } from '../api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Database, Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Info, X, Search, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { searchDataSources, createDataSource, deleteDataSource, testDataSourceConnection } from '../api';
 import { Modal } from '../components/Common';
+
+const DATA_TYPE_OPTIONS = [
+  { value: 'TEXT', label: '文本数据', description: '适用于文本处理、NLP任务' },
+  { value: 'TIMESERIES', label: '时序数据', description: '适用于时间序列分析' },
+  { value: 'IMAGE', label: '图像数据', description: '适用于图像处理任务' }
+];
+
+const SOURCE_TYPE_OPTIONS = [
+  { value: 'mysql', label: 'MySQL' },
+  { value: 'clickhouse', label: 'ClickHouse' },
+  { value: 'minio', label: 'MinIO (S3)' }
+];
 
 const DataSourcesPage = () => {
   const [sources, setSources] = useState([]);
-  const [filters, setFilters] = useState({ name: '', type: '' });
+  const [filters, setFilters] = useState({ name: '', type: '', data_type: '' });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const pageSize = 12;
+  const pageSize = 10;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   
   const [formData, setFormData] = useState({ 
       name: '', 
       description: '',
       type: 'mysql',
-      data_type: 'IMAGE',
+      data_type: '',
       connection_details: {
           host: 'localhost',
           port: 3306,
           user: 'root',
           password: '',
           database: '',
-          // Common fields, defaults will be adjusted on type change
       }
   });
 
-  // Effect to reset/set default ports when type changes
+  const [formErrors, setFormErrors] = useState({});
+  
   useEffect(() => {
      if (formData.type === 'clickhouse') {
          setFormData(prev => ({
@@ -48,14 +61,32 @@ const DataSourcesPage = () => {
          }));
      }
   }, [formData.type]);
-  const [testStatus, setTestStatus] = useState(null); // null, 'testing', 'success', 'error'
+  
+  const [testStatus, setTestStatus] = useState(null);
   const [testMessage, setTestMessage] = useState('');
 
-  const [connectionStatuses, setConnectionStatuses] = useState({}); // { id: { status: 'loading' | 'success' | 'error', message: '' } }
+  const [connectionStatuses, setConnectionStatuses] = useState({});
   
-  // Duplicate Check State
   const [duplicateError, setDuplicateError] = useState('');
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
+
+  const [searchTimeout, setSearchTimeout] = useState(null);
+
+  useEffect(() => {
+    const savedFilters = localStorage.getItem('datasource_filters');
+    if (savedFilters) {
+      try {
+        const parsed = JSON.parse(savedFilters);
+        setFilters(parsed);
+      } catch (e) {
+        console.error('Failed to parse saved filters', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('datasource_filters', JSON.stringify(filters));
+  }, [filters]);
 
   useEffect(() => {
     const checkDuplicate = async () => {
@@ -66,14 +97,12 @@ const DataSourcesPage = () => {
         
         setIsCheckingDuplicate(true);
         try {
-            // Fetch potential matches
             const res = await getDataSources({ 
                 name: formData.name, 
                 type: formData.type,
                 limit: 50 
             });
             
-            // Backend performs 'contains' search, so we must check exact match
             const exists = res.data.data.some(s => s.name === formData.name && s.type === formData.type);
             
             if (exists) {
@@ -92,7 +121,7 @@ const DataSourcesPage = () => {
     return () => clearTimeout(timer);
   }, [formData.name, formData.type, isModalOpen]);
 
-  const fetchSources = async () => {
+  const fetchSources = useCallback(async () => {
     try {
       const params = {
           skip: (page - 1) * pageSize,
@@ -100,29 +129,26 @@ const DataSourcesPage = () => {
       };
       if (filters.name) params.name = filters.name;
       if (filters.type) params.type = filters.type;
+      if (filters.data_type) params.data_type = filters.data_type;
       
-      const res = await getDataSources(params);
+      const res = await searchDataSources(params);
       const data = res.data.data;
       setSources(data);
       setTotal(res.data.total);
 
-      // Check connections for all loaded sources
       checkAllConnections(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [page, filters]);
 
   const checkAllConnections = async (sourceList) => {
-      // Initialize status to loading
       const initialStatus = {};
       sourceList.forEach(s => {
           initialStatus[s.id] = { status: 'loading', message: '' };
       });
       setConnectionStatuses(prev => ({ ...prev, ...initialStatus }));
 
-      // Check each source
-      // We can run these in parallel or sequence. Parallel is better for UI.
       sourceList.forEach(async (source) => {
           try {
               const connectionInfo = JSON.parse(source.connection_info);
@@ -152,11 +178,19 @@ const DataSourcesPage = () => {
       });
   };
 
-  useEffect(() => { fetchSources(); }, [page, filters]);
+  useEffect(() => { fetchSources(); }, [fetchSources]);
 
   const handleFilterChange = (key, value) => {
-      setFilters(prev => ({ ...prev, [key]: value }));
-      setPage(1); // Reset to first page on filter change
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      const newTimeout = setTimeout(() => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+        setPage(1);
+      }, key === 'name' ? 300 : 0);
+      
+      setSearchTimeout(newTimeout);
   };
 
   const handleInputChange = (field, value) => {
@@ -173,7 +207,6 @@ const DataSourcesPage = () => {
       setTestStatus('testing');
       setTestMessage('');
       try {
-          // Construct payload for test
           const payload = {
               type: formData.type,
               ...formData.connection_details
@@ -192,10 +225,30 @@ const DataSourcesPage = () => {
       }
   };
 
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.name.trim()) {
+      errors.name = '请输入数据源名称';
+    }
+    if (!formData.data_type) {
+      errors.data_type = '请选择数据类型';
+    }
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    if (duplicateError) {
+      return;
+    }
+    
     try {
-      // Convert connection_details back to JSON string for storage
       const payload = {
           name: formData.name,
           description: formData.description,
@@ -206,12 +259,11 @@ const DataSourcesPage = () => {
       await createDataSource(payload);
       setIsModalOpen(false);
       fetchSources();
-      // Reset form
       setFormData({ 
           name: '', 
           description: '',
           type: 'mysql',
-          data_type: 'IMAGE',
+          data_type: '',
           connection_details: {
             host: 'localhost',
             port: 3306,
@@ -221,6 +273,7 @@ const DataSourcesPage = () => {
         }
        });
        setTestStatus(null);
+       setFormErrors({});
     } catch (err) {
       alert('Failed to create data source');
     }
@@ -230,10 +283,14 @@ const DataSourcesPage = () => {
     if (confirm('确认删除此数据源?')) {
       try {
         await deleteDataSource(id);
-        // Refresh data from server only after successful deletion
         await fetchSources();
       } catch (err) {
-        alert('删除失败');
+        const errorData = err.response?.data;
+        if (errorData?.detail?.error_code === 'DATASOURCE_HAS_RELATED_TASKS') {
+          alert(`无法删除: ${errorData.detail.message}\n请先删除关联的 ${errorData.detail.related_tasks_count} 个任务`);
+        } else {
+          alert('删除失败');
+        }
         console.error(err);
       }
     }
@@ -243,6 +300,13 @@ const DataSourcesPage = () => {
       setSelectedSource(source);
       setIsDetailModalOpen(true);
   };
+
+  const clearFilters = () => {
+    setFilters({ name: '', type: '', data_type: '' });
+    setPage(1);
+  };
+
+  const activeFilterCount = [filters.name, filters.type, filters.data_type].filter(Boolean).length;
 
   const renderConnectionFields = () => {
       const { type } = formData;
@@ -274,7 +338,7 @@ const DataSourcesPage = () => {
                         className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                         value={connection_details.host}
                         onChange={e => handleInputChange('host', e.target.value)}
-                        placeholder={type === 'clickhouse' ? "localhost" : "localhost"}
+                        placeholder="localhost"
                         />
                     </div>
                     <div>
@@ -385,7 +449,7 @@ const DataSourcesPage = () => {
                   name: '', 
                   description: '',
                   type: 'mysql',
-                  data_type: 'IMAGE',
+                  data_type: '',
                   connection_details: {
                       host: 'localhost',
                       port: 3306,
@@ -396,6 +460,7 @@ const DataSourcesPage = () => {
                });
               setDuplicateError('');
               setTestStatus(null);
+              setFormErrors({});
               setIsModalOpen(true);
           }}
           className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors shadow-sm"
@@ -404,29 +469,80 @@ const DataSourcesPage = () => {
         </button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
-          <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input 
-                  type="text" 
-                  placeholder="按名称搜索..." 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
-                  value={filters.name}
-                  onChange={e => handleFilterChange('name', e.target.value)}
-              />
-          </div>
-          <div className="w-48">
-              <select 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
-                  value={filters.type}
-                  onChange={e => handleFilterChange('type', e.target.value)}
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        <div className="p-4 flex gap-4 items-center">
+            <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input 
+                    type="text" 
+                    placeholder="按名称搜索..." 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                    value={filters.name}
+                    onChange={e => handleFilterChange('name', e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && fetchSources()}
+                />
+            </div>
+            
+            <div className="w-48">
+                <select 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                    value={filters.type}
+                    onChange={e => handleFilterChange('type', e.target.value)}
+                >
+                    <option value="">所有源类型</option>
+                    {SOURCE_TYPE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
+            </div>
+
+            <button
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-800 px-3 py-2 rounded-md hover:bg-slate-50"
+            >
+              {isFilterExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              更多筛选
+              {activeFilterCount > 0 && (
+                <span className="bg-blue-100 text-blue-600 text-xs px-1.5 py-0.5 rounded-full ml-1">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="text-sm text-slate-500 hover:text-slate-700 px-2 py-1"
               >
-                  <option value="">所有类型</option>
-                  <option value="mysql">MySQL</option>
-                  <option value="clickhouse">ClickHouse</option>
-                  <option value="minio">MinIO (S3)</option>
+                清除筛选
+              </button>
+            )}
+        </div>
+
+        {isFilterExpanded && (
+          <div className="px-4 pb-4 pt-0 border-t border-slate-100 flex gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500">数据类型:</label>
+              <select 
+                  className="bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:border-blue-500"
+                  value={filters.data_type}
+                  onChange={e => handleFilterChange('data_type', e.target.value)}
+              >
+                  <option value="">全部</option>
+                  {DATA_TYPE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
               </select>
+            </div>
+            
+            <div className="text-sm text-slate-400 ml-auto">
+              找到 <span className="font-medium text-slate-600">{total}</span> 条结果
+              {activeFilterCount > 0 && (
+                <span className="ml-2 text-blue-500">({activeFilterCount} 个筛选条件)</span>
+              )}
+            </div>
           </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -436,7 +552,7 @@ const DataSourcesPage = () => {
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h3 className="font-semibold text-lg text-slate-800">{source.name}</h3>
-                <div className="flex gap-2 mt-1">
+                <div className="flex gap-2 mt-1 flex-wrap">
                   <span className="text-xs text-slate-500 uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block font-medium">
                     {source.type}
                   </span>
@@ -444,10 +560,10 @@ const DataSourcesPage = () => {
                     <span className={`text-xs font-medium px-2 py-0.5 rounded border inline-block ${
                       source.data_type === 'IMAGE' ? 'bg-blue-50 text-blue-600 border-blue-200' :
                       source.data_type === 'TIMESERIES' ? 'bg-green-50 text-green-600 border-green-200' :
-                      source.data_type === 'NER' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                      source.data_type === 'TEXT' ? 'bg-purple-50 text-purple-600 border-purple-200' :
                       'bg-slate-100 text-slate-500 border-slate-200'
                     }`}>
-                      {source.data_type}
+                      {DATA_TYPE_OPTIONS.find(o => o.value === source.data_type)?.label || source.data_type}
                     </span>
                   )}
                 </div>
@@ -456,11 +572,11 @@ const DataSourcesPage = () => {
                   <button 
                     onClick={() => openDetailModal(source)}
                     className="text-slate-400 hover:text-blue-500 p-1 rounded hover:bg-blue-50 transition-colors"
-                    title="View Details"
+                    title="查看详情"
                   >
                     <Info size={18} />
                   </button>
-                  <button onClick={() => handleDelete(source.id)} className="text-slate-400 hover:text-rose-500 p-1 rounded hover:bg-rose-50 transition-colors">
+                  <button onClick={() => handleDelete(source.id)} className="text-slate-400 hover:text-rose-500 p-1 rounded hover:bg-rose-50 transition-colors" title="删除">
                     <Trash2 size={18} />
                   </button>
               </div>
@@ -493,10 +609,20 @@ const DataSourcesPage = () => {
             </div>
           </div>
         ))}
+        {sources.length === 0 && (
+          <div className="col-span-full p-12 border border-dashed border-slate-300 rounded-lg text-center text-slate-400">
+            <Database size={48} className="mx-auto mb-4 opacity-50" />
+            <p>未找到匹配的数据源</p>
+            {activeFilterCount > 0 && (
+              <button onClick={clearFilters} className="mt-2 text-blue-500 hover:text-blue-600 text-sm">
+                清除筛选条件
+              </button>
+            )}
+          </div>
+        )}
       </div>
       </div>
 
-      {/* Pagination Controls */}
       <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
         <span className="text-sm text-slate-500">
             共 {total} 条
@@ -561,22 +687,24 @@ const DataSourcesPage = () => {
         </div>
       </div>
 
-      {/* Add Source Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="添加数据源">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">名称</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              名称 <span className="text-rose-500">*</span>
+            </label>
             <div className="relative">
                 <input 
                   type="text" 
                   required
                   className={`w-full bg-slate-950 border rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 ${
-                      duplicateError 
+                      duplicateError || formErrors.name
                       ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20' 
                       : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/20'
                   }`}
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
+                  placeholder="请输入数据源名称"
                 />
                 {isCheckingDuplicate && (
                     <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -589,7 +717,11 @@ const DataSourcesPage = () => {
                     <AlertTriangle size={12} /> {duplicateError}
                 </p>
             )}
+            {formErrors.name && !duplicateError && (
+                <p className="text-xs text-rose-500 mt-1">{formErrors.name}</p>
+            )}
           </div>
+          
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-1">数据类型描述</label>
             <input 
@@ -597,41 +729,60 @@ const DataSourcesPage = () => {
               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
               value={formData.description || ''}
               onChange={e => setFormData({...formData, description: e.target.value})}
-              placeholder="例如: 文本数据、时序数据、图像数据"
+              placeholder="可选描述信息"
             />
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">类型</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">源类型</label>
             <select 
               className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
               value={formData.type}
               onChange={e => setFormData({...formData, type: e.target.value})}
             >
-              <option value="mysql">MySQL</option>
-              <option value="clickhouse">ClickHouse</option>
-              <option value="minio">MinIO (S3)</option>
+              {SOURCE_TYPE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
+          
           <div>
-            <label className="block text-sm font-medium text-slate-400 mb-1">数据类型</label>
+            <label className="block text-sm font-medium text-slate-400 mb-1">
+              数据类型 <span className="text-rose-500">*</span>
+            </label>
             <select 
-              className="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+              className={`w-full bg-slate-950 border rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-1 ${
+                formErrors.data_type 
+                ? 'border-rose-500 focus:border-rose-500 focus:ring-rose-500/20'
+                : 'border-slate-700 focus:border-blue-500 focus:ring-blue-500/20'
+              }`}
               value={formData.data_type}
-              onChange={e => setFormData({...formData, data_type: e.target.value})}
+              onChange={e => {
+                setFormData({...formData, data_type: e.target.value});
+                if (formErrors.data_type) {
+                  setFormErrors({...formErrors, data_type: null});
+                }
+              }}
             >
-              {formData.type === 'minio' && (
-                <option value="IMAGE">IMAGE（图像数据）</option>
-              )}
-              <option value="TIMESERIES">TIMESERIES（时序数据）</option>
-              <option value="NER">NER（命名实体识别）</option>
+              <option value="">请选择数据类型</option>
+              {DATA_TYPE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
+            {formErrors.data_type && (
+                <p className="text-xs text-rose-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle size={12} /> {formErrors.data_type}
+                </p>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              请根据数据特性选择合适的类型
+            </p>
           </div>
           
           <div className="border-t border-slate-800 pt-4 mt-2 space-y-4">
               {renderConnectionFields()}
           </div>
 
-          {/* Test Connection Status */}
           {testStatus && (
               <div className={`mt-2 p-3 rounded text-sm flex items-start gap-2 max-h-32 overflow-y-auto ${
                   testStatus === 'success' ? 'bg-emerald-900/30 text-emerald-400' : 
@@ -671,7 +822,6 @@ const DataSourcesPage = () => {
         </form>
       </Modal>
 
-      {/* Detail Modal */}
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="连接详情">
           {selectedSource && (
               <div className="space-y-4">
@@ -686,6 +836,13 @@ const DataSourcesPage = () => {
                       </div>
                   </div>
                   
+                  <div>
+                      <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">数据类型</label>
+                      <div className="text-slate-200 font-medium">
+                        {DATA_TYPE_OPTIONS.find(o => o.value === selectedSource.data_type)?.label || selectedSource.data_type || '-'}
+                      </div>
+                  </div>
+
                   <div>
                       <label className="block text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">描述</label>
                       <div className="text-slate-200 font-medium">{selectedSource.description || '-'}</div>

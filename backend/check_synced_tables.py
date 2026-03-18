@@ -1,9 +1,8 @@
 from sqlmodel import Session, select
-from app.core.db import engine
+from app.core.db import get_engine
 from app.models.synced_table import SyncedTable
 
-# 查询数据库中的SyncedTable记录
-with Session(engine) as session:
+with Session(get_engine()) as session:
     synced_tables = session.exec(select(SyncedTable)).all()
     print(f"Total synced tables: {len(synced_tables)}")
     print("\nSynced tables:")

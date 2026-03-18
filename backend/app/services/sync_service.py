@@ -2,7 +2,7 @@ import pandas as pd
 import json
 import time
 from sqlmodel import Session, select
-from app.core.db import engine
+from app.core.db import get_engine
 from app.models.task import DataTask
 from app.models.datasource import DataSource
 from app.models.synced_table import SyncedTable
@@ -14,7 +14,7 @@ from datetime import datetime
 from app.models.audit import AuditLog
 
 def run_sync_task(task_id: int):
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         task = session.get(DataTask, task_id)
         if not task:
             return

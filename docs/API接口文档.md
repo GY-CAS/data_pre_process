@@ -203,11 +203,86 @@ Data Preprocessing System API 是一个用于数据预处理任务的RESTful API
 |------|------|------|------|
 | datasource_id | integer | 是 | 数据源ID |
 
+**前置条件**:
+- 数据源必须存在
+- 数据源不能有关联的同步任务
+
 **响应 (200 OK)**:
 
 ```json
 {
-  "ok": true
+  "ok": true,
+  "message": "DataSource 'xxx' deleted successfully"
+}
+```
+
+**错误响应**:
+
+*数据源不存在 (404)*:
+```json
+{
+  "detail": "DataSource not found"
+}
+```
+
+*存在关联任务 (409 Conflict)*:
+```json
+{
+  "detail": {
+    "error_code": "DATASOURCE_HAS_RELATED_TASKS",
+    "message": "Cannot delete datasource 'xxx' because it has 3 related task(s)",
+    "related_tasks_count": 3,
+    "related_tasks": [
+      {
+        "id": 1,
+        "name": "task_1",
+        "task_type": "sync",
+        "status": "pending",
+        "created_at": "2024-01-01T00:00:00"
+      }
+    ],
+    "suggestion": "Please delete or modify the related tasks before deleting this datasource"
+  }
+}
+```
+
+---
+
+### 1.5 获取数据源关联任务
+
+获取与指定数据源关联的所有同步任务。
+
+**URL**: `GET /datasources/{datasource_id}/related-tasks`
+
+**路径参数**:
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| datasource_id | integer | 是 | 数据源ID |
+
+**响应 (200 OK)**:
+
+```json
+{
+  "datasource_id": 1,
+  "datasource_name": "my_mysql",
+  "related_tasks_count": 2,
+  "related_tasks": [
+    {
+      "id": 1,
+      "name": "sync_task_1",
+      "task_type": "sync",
+      "status": "success",
+      "created_at": "2024-01-01T00:00:00"
+    },
+    {
+      "id": 2,
+      "name": "sync_task_2",
+      "task_type": "sync",
+      "status": "pending",
+      "created_at": "2024-01-02T00:00:00"
+    }
+  ]
 }
 ```
 
@@ -220,7 +295,7 @@ Data Preprocessing System API 是一个用于数据预处理任务的RESTful API
 
 ---
 
-### 1.5 获取数据源元数据
+### 1.6 获取数据源元数据
 
 获取数据源中的表/桶列表。
 

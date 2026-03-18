@@ -1,8 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow, downloadDataAsset } from '../api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { searchDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow, downloadDataAsset } from '../api';
 import { Modal } from '../components/Common';
-import { Search, Filter, MoreVertical } from 'lucide-react';
+import { Search, Filter } from 'lucide-react';
+
+const DATA_TYPE_OPTIONS = [
+  { value: 'TEXT', label: '文本数据' },
+  { value: 'TIMESERIES', label: '时序数据' },
+  { value: 'IMAGE', label: '图像数据' }
+];
+
+const ASSET_TYPE_OPTIONS = [
+  { value: 'table', label: '数据库表' },
+  { value: 'bucket', label: 'MinIO 存储桶' },
+  { value: 'file', label: '本地文件' }
+];
 
 const DataManagementPage = () => {
   const [assets, setAssets] = useState([]);
@@ -11,16 +23,15 @@ const DataManagementPage = () => {
   const [previewContent, setPreviewContent] = useState(null);
   const [minioLinks, setMinioLinks] = useState(null);
   const [structureContent, setStructureContent] = useState(null);
-  const [modalType, setModalType] = useState(null); // 'preview' or 'structure' or 'export'
+  const [modalType, setModalType] = useState(null);
   const [exportFormat, setExportFormat] = useState('csv');
   
-  // Filters
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState('all'); // 'all', 'file', 'table'
+  const [filters, setFilters] = useState({ name: '', type: '', data_type: '' });
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
 
-  // Pagination & Editing State
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(12); // Data cards per page
+  const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
   const [previewPage, setPreviewPage] = useState(1);
   const [previewPageSize] = useState(20);
@@ -28,52 +39,89 @@ const DataManagementPage = () => {
 
   const [editingRowId, setEditingRowId] = useState(null);
   const [editData, setEditData] = useState({});
-  const [selectedAssetIds, setSelectedAssetIds] = useState([]); // For bulk delete
+
+  useEffect(() => {
+    const savedFilters = localStorage.getItem('datamanagement_filters');
+    if (savedFilters) {
+      try {
+        const parsed = JSON.parse(savedFilters);
+        setFilters(parsed);
+      } catch (e) {
+        console.error('Failed to parse saved filters', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('datamanagement_filters', JSON.stringify(filters));
+  }, [filters]);
+
+  const fetchAssets = useCallback(async () => {
+    try {
+      const params = {};
+      if (filters.name) params.name = filters.name;
+      if (filters.type) params.type = filters.type;
+      if (filters.data_type) params.data_type = filters.data_type;
+      
+      const res = await searchDataAssets(params);
+      setAssets(res.data.data || []);
+      setTotal(res.data.total || 0);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [filters]);
 
   useEffect(() => {
     fetchAssets();
-  }, []);
+  }, [fetchAssets]);
 
   useEffect(() => {
       let result = assets;
       
-      // Filter by name
-      if (searchTerm) {
-          result = result.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      if (filters.name) {
+          result = result.filter(a => a.name.toLowerCase().includes(filters.name.toLowerCase()));
       }
-      
-      // Filter by type
-      if (filterType !== 'all') {
-          result = result.filter(a => a.type === filterType);
+      if (filters.type) {
+          result = result.filter(a => a.type === filters.type);
+      }
+      if (filters.data_type) {
+          result = result.filter(a => a.data_type === filters.data_type);
       }
       
       setTotal(result.length);
-      // Pagination logic for assets
       const start = (page - 1) * pageSize;
       const end = start + pageSize;
       setFilteredAssets(result.slice(start, end));
-  }, [assets, searchTerm, filterType, page, pageSize]);
+  }, [assets, filters, page, pageSize]);
 
-  const fetchAssets = async () => {
-    try {
-      const res = await getDataAssets();
-      setAssets(res.data);
-      setTotal(res.data.length); // Initialize total
-    } catch (err) {
-      console.error(err);
-    }
+  const handleFilterChange = (key, value) => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      const newTimeout = setTimeout(() => {
+        setFilters(prev => ({ ...prev, [key]: value }));
+        setPage(1);
+      }, key === 'name' ? 300 : 0);
+      
+      setSearchTimeout(newTimeout);
   };
 
+  const clearFilters = () => {
+    setFilters({ name: '', type: '', data_type: '' });
+    setPage(1);
+  };
+
+  const activeFilterCount = [filters.name, filters.type, filters.data_type].filter(Boolean).length;
+
   const handleDeleteAsset = async (asset) => {
-      // 1. Double check before deletion
-      if (confirm(`Are you sure you want to delete ${asset.name}? This action cannot be undone.`)) {
+      if (confirm(`确认删除 ${asset.name}? 此操作不可撤销。`)) {
           try {
-              // Use ID if available, otherwise name (backward compat)
               const identifier = asset.id ? asset.id.toString() : asset.name;
               await deleteDataAsset(identifier);
-              fetchAssets(); // Refresh list
+              fetchAssets();
           } catch (err) {
-              alert('Failed to delete asset: ' + (err.response?.data?.detail || err.message));
+              alert('删除失败: ' + (err.response?.data?.detail || err.message));
           }
       }
   };
@@ -81,13 +129,6 @@ const DataManagementPage = () => {
   const handlePreview = async (asset, pageNum = 1) => {
     try {
       const offset = (pageNum - 1) * previewPageSize;
-      // Pass ID as query param or part of path? 
-      // API: previewData(path, limit, offset, id)
-      // We need to update api.js to support id parameter
-      // For now, let's assume previewData accepts optional 4th param or object
-      // Actually, looking at api.js is needed. I will update it.
-      // But assuming I can pass it.
-      
       const res = await previewData(asset.path, previewPageSize, offset, asset.id);
       setPreviewContent(res.data);
       setPreviewTotal(res.data.total || 0); 
@@ -96,7 +137,7 @@ const DataManagementPage = () => {
       setPreviewPage(pageNum);
       setEditingRowId(null);
     } catch (err) {
-      alert('Failed to load preview: ' + err.message);
+      alert('加载预览失败: ' + err.message);
     }
   };
 
@@ -112,25 +153,17 @@ const DataManagementPage = () => {
       setSelectedAsset(asset);
       setModalType('structure');
     } catch (err) {
-      alert('Failed to load structure: ' + err.message);
+      alert('加载结构失败: ' + err.message);
     }
   };
   
   const handleExportClick = async (asset) => {
       setSelectedAsset(asset);
       
-      // If it's a MinIO asset (based on type/source inference or if we stored source_type in asset list),
-      // we should skip the format selection. 
-      // Current 'getDataAssets' returns { name, type, size, source, path }.
-      // 'source' is the source_type (mysql, clickhouse, minio).
-      
       if (asset.source === 'minio') {
-          // Trigger export directly for MinIO to get links
-          // We can reuse handleExportConfirm logic but need to set state properly
-          // Or just call API here.
           try {
               const identifier = asset.id ? asset.id.toString() : asset.name;
-              const res = await downloadDataAsset(identifier, 'minio'); // format ignored for minio
+              const res = await downloadDataAsset(identifier, 'minio');
               
               if (res.headers['content-type']?.includes('application/json')) {
                    const text = await res.data.text();
@@ -142,7 +175,7 @@ const DataManagementPage = () => {
                    }
               }
           } catch (err) {
-              alert('Failed to get download links: ' + err.message);
+              alert('获取下载链接失败: ' + err.message);
           }
       } else {
           setModalType('export');
@@ -156,30 +189,22 @@ const DataManagementPage = () => {
           const identifier = selectedAsset.id ? selectedAsset.id.toString() : selectedAsset.name;
           const res = await downloadDataAsset(identifier, exportFormat);
           
-          // Check if it's MinIO links (JSON) or Blob
           if (res.headers['content-type']?.includes('application/json')) {
-              // It's a JSON response with links? 
-              // Wait, axios response.data is Blob if responseType is blob.
-              // If backend returns JSON, blob will contain text.
               const text = await res.data.text();
               try {
                   const json = JSON.parse(text);
                   if (json.status === 'minio_links') {
-                      // Show links in a new modal or alert
                       setModalType('minio_links');
-                      setMinioLinks(json.links); // Reuse previewContent for links
+                      setMinioLinks(json.links);
                       return;
                   }
               } catch (e) {
-                  // Not JSON, proceed as file
               }
           }
           
-          // It's a file download
           const url = window.URL.createObjectURL(new Blob([res.data]));
           const link = document.createElement('a');
           link.href = url;
-          // Try to get filename from header
           const contentDisposition = res.headers['content-disposition'];
           let filename = `${selectedAsset.name}.${exportFormat === 'excel' ? 'xlsx' : exportFormat}`;
           if (contentDisposition) {
@@ -192,7 +217,7 @@ const DataManagementPage = () => {
           link.remove();
           setModalType(null);
       } catch (err) {
-          alert('Export failed: ' + err.message);
+          alert('导出失败: ' + err.message);
       }
   };
 
@@ -204,7 +229,6 @@ const DataManagementPage = () => {
       setEditingRowId(null);
   };
 
-  // Editing Handlers
   const handleEditClick = (row) => {
       setEditingRowId(row._rowid);
       setEditData({...row});
@@ -218,32 +242,32 @@ const DataManagementPage = () => {
   const handleSaveClick = async () => {
       const editable = selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false;
       if (!editable) {
-          alert("当前资产不支持编辑（可能缺少主键/行标识）");
+          alert("当前资产不支持编辑");
           return;
       }
 
       try {
           await updateTableRow(selectedAsset.path, editingRowId, editData);
           setEditingRowId(null);
-          handlePreview(selectedAsset, previewPage); // Refresh data
+          handlePreview(selectedAsset, previewPage);
       } catch (err) {
-          alert('Failed to update row: ' + (err.response?.data?.detail || err.message));
+          alert('更新失败: ' + (err.response?.data?.detail || err.message));
       }
   };
 
   const handleDeleteClick = async (rowId) => {
       const editable = selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false;
       if (!editable) {
-          alert("当前资产不支持删除行（可能缺少主键/行标识）");
+          alert("当前资产不支持删除行");
           return;
       }
 
-      if (confirm('Are you sure you want to delete this row?')) {
+      if (confirm('确认删除此行?')) {
           try {
               await deleteTableRow(selectedAsset.path, rowId);
-              handlePreview(selectedAsset, previewPage); // Refresh data
+              handlePreview(selectedAsset, previewPage);
           } catch (err) {
-              alert('Failed to delete row: ' + (err.response?.data?.detail || err.message));
+              alert('删除失败: ' + (err.response?.data?.detail || err.message));
           }
       }
   };
@@ -273,30 +297,80 @@ const DataManagementPage = () => {
         </h2>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg p-4 flex gap-4 items-center shadow-sm">
-          <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input 
-                  type="text" 
-                  placeholder="按名称搜索..." 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-              />
-          </div>
-          
-          <div className="relative w-48">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <select 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20 appearance-none cursor-pointer"
-                  value={filterType}
-                  onChange={e => setFilterType(e.target.value)}
+      <div className="bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+        <div className="p-4 flex gap-4 items-center">
+            <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input 
+                    type="text" 
+                    placeholder="按名称搜索..." 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md pl-9 pr-4 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
+                    value={filters.name}
+                    onChange={e => handleFilterChange('name', e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && fetchAssets()}
+                />
+            </div>
+            
+            <div className="w-48">
+                <select 
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
+                    value={filters.type}
+                    onChange={e => handleFilterChange('type', e.target.value)}
+                >
+                    <option value="">所有类型</option>
+                    {ASSET_TYPE_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                </select>
+            </div>
+
+            <button
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className="flex items-center gap-1 text-sm text-slate-600 hover:text-slate-800 px-3 py-2 rounded-md hover:bg-slate-50"
+            >
+              {isFilterExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              更多筛选
+              {activeFilterCount > 0 && (
+                <span className="bg-purple-100 text-purple-600 text-xs px-1.5 py-0.5 rounded-full ml-1">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="text-sm text-slate-500 hover:text-slate-700 px-2 py-1"
               >
-                  <option value="all">所有类型</option>
-                  <option value="table">数据库表</option>
-                  <option value="bucket">MinIO 存储桶</option>
+                清除筛选
+              </button>
+            )}
+        </div>
+
+        {isFilterExpanded && (
+          <div className="px-4 pb-4 pt-0 border-t border-slate-100 flex gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-slate-500">数据类型:</label>
+              <select 
+                  className="bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:border-purple-500"
+                  value={filters.data_type}
+                  onChange={e => handleFilterChange('data_type', e.target.value)}
+              >
+                  <option value="">全部</option>
+                  {DATA_TYPE_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
               </select>
+            </div>
+            
+            <div className="text-sm text-slate-400 ml-auto">
+              找到 <span className="font-medium text-slate-600">{total}</span> 条结果
+              {activeFilterCount > 0 && (
+                <span className="ml-2 text-purple-500">({activeFilterCount} 个筛选条件)</span>
+              )}
+            </div>
           </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -326,13 +400,12 @@ const DataManagementPage = () => {
                                 <span className={`text-xs font-medium px-2 py-0.5 rounded border ${
                                   asset.data_type === 'IMAGE' ? 'bg-blue-50 text-blue-600 border-blue-200' :
                                   asset.data_type === 'TIMESERIES' ? 'bg-green-50 text-green-600 border-green-200' :
-                                  asset.data_type === 'NER' ? 'bg-purple-50 text-purple-600 border-purple-200' :
+                                  asset.data_type === 'TEXT' ? 'bg-purple-50 text-purple-600 border-purple-200' :
                                   'bg-slate-100 text-slate-500 border-slate-200'
                                 }`}>
-                                  {asset.data_type}
+                                  {DATA_TYPE_OPTIONS.find(o => o.value === asset.data_type)?.label || asset.data_type}
                                 </span>
                               )}
-                              {/* Delete Button (always visible) */}
                               <button 
                                   onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset); }}
                                   className="p-1.5 rounded-full bg-slate-50 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all z-10"
@@ -352,6 +425,7 @@ const DataManagementPage = () => {
 
                       <div className="flex items-center gap-4 text-xs text-slate-400 font-mono mb-4">
                           <span>{asset.size}</span>
+                          {asset.rows > 0 && <span>{asset.rows} 行</span>}
                       </div>
 
                       <div className="flex gap-2 pt-4 border-t border-slate-100">
@@ -383,12 +457,16 @@ const DataManagementPage = () => {
             <div className="col-span-full p-12 border border-dashed border-slate-300 rounded-lg text-center text-slate-400">
                 <Folder size={48} className="mx-auto mb-4 opacity-50" />
                 <p>未找到匹配的数据资产。</p>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="mt-2 text-purple-500 hover:text-purple-600 text-sm">
+                    清除筛选条件
+                  </button>
+                )}
             </div>
           )}
       </div>
       </div>
       
-      {/* Asset Pagination */}
       <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
           <div className="text-sm text-slate-500">
              共 {total} 条
@@ -450,7 +528,6 @@ const DataManagementPage = () => {
           </div>
       </div>
 
-      {/* Preview Modal */}
       <Modal isOpen={modalType === 'preview'} onClose={closeModal} title={`预览: ${selectedAsset?.name}`}>
         <div className="flex flex-col h-[70vh]">
             <div className="overflow-auto flex-1 border border-slate-700 rounded mb-4">
@@ -504,7 +581,6 @@ const DataManagementPage = () => {
                 )}
             </div>
             
-            {/* Preview Pagination */}
             {previewContent && (
                 <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700 pt-4">
                     <div>
@@ -532,7 +608,6 @@ const DataManagementPage = () => {
         </div>
       </Modal>
 
-      {/* Structure Modal - Unchanged mostly */}
       <Modal isOpen={modalType === 'structure'} onClose={closeModal} title={`结构: ${selectedAsset?.name}`}>
         <div className="overflow-auto max-h-[60vh]">
             {structureContent ? (
@@ -560,7 +635,6 @@ const DataManagementPage = () => {
         </div>
       </Modal>
       
-      {/* Export Modal */}
       <Modal isOpen={modalType === 'export'} onClose={closeModal} title={`导出: ${selectedAsset?.name}`}>
           <div className="p-4 space-y-4">
               <p className="text-sm text-slate-600">请选择导出格式:</p>
@@ -610,7 +684,6 @@ const DataManagementPage = () => {
           </div>
       </Modal>
 
-      {/* MinIO Links Modal */}
       <Modal isOpen={modalType === 'minio_links'} onClose={closeModal} title={`下载文件: ${selectedAsset?.name}`}>
            <div className="p-4 overflow-auto max-h-[60vh]">
                <p className="text-sm text-slate-500 mb-4">以下是 Bucket 中的文件下载链接 (有效期5分钟):</p>

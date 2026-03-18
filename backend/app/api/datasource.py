@@ -4,14 +4,32 @@ from typing import List, Dict, Any
 from sqlmodel import Session, select, func
 from app.core.db import get_session
 from app.models.datasource import DataSource
+from app.models.task import DataTask
 from app.models.audit import AuditLog
 import json
 
 router = APIRouter(prefix="/datasources", tags=["datasources"])
 
+def get_related_tasks(session: Session, datasource_id: int) -> List[Dict[str, Any]]:
+    tasks = session.exec(select(DataTask)).all()
+    related_tasks = []
+    for task in tasks:
+        try:
+            config = json.loads(task.config)
+            if config.get("source_id") == datasource_id:
+                related_tasks.append({
+                    "id": task.id,
+                    "name": task.name,
+                    "task_type": task.task_type,
+                    "status": task.status,
+                    "created_at": task.created_at.isoformat() if task.created_at else None
+                })
+        except (json.JSONDecodeError, TypeError):
+            continue
+    return related_tasks
+
 @router.post("/", response_model=DataSource)
 def create_datasource(datasource: DataSource, session: Session = Depends(get_session)):
-    # Check for duplicates (Same Name + Same Type)
     existing = session.exec(select(DataSource).where(DataSource.name == datasource.name, DataSource.type == datasource.type)).first()
     if existing:
         raise HTTPException(status_code=400, detail=f"Data source with name '{datasource.name}' already exists for type '{datasource.type}'")
@@ -20,7 +38,6 @@ def create_datasource(datasource: DataSource, session: Session = Depends(get_ses
     session.commit()
     session.refresh(datasource)
     
-    # Audit Log
     log = AuditLog(user_id="admin", action="create_datasource", resource=datasource.name, details=f"Type: {datasource.type}, Description: {datasource.description}")
     session.add(log)
     session.commit()
@@ -31,22 +48,13 @@ def create_datasource(datasource: DataSource, session: Session = Depends(get_ses
 def read_datasources(
     skip: int = 0, 
     limit: int = 100, 
-    name: str = None, 
-    type: str = None, 
     session: Session = Depends(get_session)
 ):
-    # Base query for filtering
     query = select(DataSource)
-    if name:
-        query = query.where(DataSource.name.contains(name))
-    if type:
-        query = query.where(DataSource.type == type)
     
-    # Count total results matching filter
     count_query = select(func.count()).select_from(query.subquery())
     total = session.exec(count_query).one()
 
-    # Get paged results
     datasources = session.exec(query.offset(skip).limit(limit)).all()
     
     return {
@@ -56,6 +64,46 @@ def read_datasources(
         "limit": limit
     }
 
+@router.get("/search", response_model=Dict[str, Any])
+def search_datasources(
+    name: str = None,
+    type: str = None,
+    data_type: str = None,
+    skip: int = 0,
+    limit: int = 10,
+    session: Session = Depends(get_session)
+):
+    query = select(DataSource)
+    
+    if name:
+        query = query.where(DataSource.name.contains(name))
+    if type:
+        query = query.where(DataSource.type == type)
+    if data_type:
+        query = query.where(DataSource.data_type == data_type)
+    
+    count_query = select(func.count()).select_from(query.subquery())
+    total = session.exec(count_query).one()
+
+    datasources = session.exec(query.offset(skip).limit(limit)).all()
+    
+    active_filters = []
+    if name:
+        active_filters.append({"field": "name", "value": name, "match_type": "contains"})
+    if type:
+        active_filters.append({"field": "type", "value": type, "match_type": "exact"})
+    if data_type:
+        active_filters.append({"field": "data_type", "value": data_type, "match_type": "exact"})
+    
+    return {
+        "data": datasources,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "filters_applied": len(active_filters),
+        "search_criteria": active_filters
+    }
+
 @router.get("/{datasource_id}", response_model=DataSource)
 def read_datasource(datasource_id: int, session: Session = Depends(get_session)):
     datasource = session.get(DataSource, datasource_id)
@@ -63,21 +111,52 @@ def read_datasource(datasource_id: int, session: Session = Depends(get_session))
         raise HTTPException(status_code=404, detail="DataSource not found")
     return datasource
 
+@router.get("/{datasource_id}/related-tasks")
+def get_datasource_related_tasks(datasource_id: int, session: Session = Depends(get_session)):
+    datasource = session.get(DataSource, datasource_id)
+    if not datasource:
+        raise HTTPException(status_code=404, detail="DataSource not found")
+    
+    related_tasks = get_related_tasks(session, datasource_id)
+    return {
+        "datasource_id": datasource_id,
+        "datasource_name": datasource.name,
+        "related_tasks_count": len(related_tasks),
+        "related_tasks": related_tasks
+    }
+
 @router.delete("/{datasource_id}")
 def delete_datasource(datasource_id: int, session: Session = Depends(get_session)):
     datasource = session.get(DataSource, datasource_id)
     if not datasource:
         raise HTTPException(status_code=404, detail="DataSource not found")
     
+    related_tasks = get_related_tasks(session, datasource_id)
+    if related_tasks:
+        task_names = [t["name"] for t in related_tasks[:5]]
+        task_info = ", ".join(task_names)
+        if len(related_tasks) > 5:
+            task_info += f" ... and {len(related_tasks) - 5} more"
+        
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": "DATASOURCE_HAS_RELATED_TASKS",
+                "message": f"Cannot delete datasource '{datasource.name}' because it has {len(related_tasks)} related task(s)",
+                "related_tasks_count": len(related_tasks),
+                "related_tasks": related_tasks,
+                "suggestion": "Please delete or modify the related tasks before deleting this datasource"
+            }
+        )
+    
     name = datasource.name
     session.delete(datasource)
     
-    # Audit Log
     log = AuditLog(user_id="admin", action="delete_datasource", resource=name)
     session.add(log)
     
     session.commit()
-    return {"ok": True}
+    return {"ok": True, "message": f"DataSource '{name}' deleted successfully"}
 
 @router.get("/{datasource_id}/metadata")
 def get_datasource_metadata(datasource_id: int, session: Session = Depends(get_session)):
@@ -101,34 +180,17 @@ def get_datasource_metadata(datasource_id: int, session: Session = Depends(get_s
             return {"tables": inspector.get_table_names()}
             
         elif db_type == "clickhouse":
-            # Simple HTTP fallback if driver not present, or assume driver
-            # For simplicity, let's try to use requests to HTTP interface if driver fails, 
-            # but usually port 8123 is HTTP. 
-            # Let's assume clickhouse-driver is installed or we use a simple query mechanism.
-            # Ideally we should use the same method as test_connection.
-            # But test_connection uses socket.
-            
-            # Let's try clickhouse-connect or clickhouse-driver
-            # If not available, we can't really fetch metadata easily without extra deps.
-            # I will assume 'clickhouse-driver' or 'requests'
             import requests
-            # ClickHouse HTTP interface usually on 8123
-            # If user provided port 9000 (native), we might need to guess HTTP port or use native driver.
-            # Let's try to use native driver first.
             try:
                 from clickhouse_driver import Client
                 client = Client(host=connection_info['host'], port=connection_info.get('port', 9000), user=connection_info['user'], password=connection_info['password'], database=connection_info['database'])
                 result = client.execute('SHOW TABLES')
                 return {"tables": [row[0] for row in result]}
             except ImportError:
-                 # Fallback to HTTP if driver missing (assuming port 8123 for HTTP if 9000 failed/not used)
-                 # This is a bit guessy.
                  pass
 
         elif db_type == "minio":
             import boto3
-            # MinIO usually requires endpoint, access_key, secret_key
-            # We need to ensure these are in connection_info
             s3 = boto3.client(
                 's3',
                 endpoint_url=connection_info.get('endpoint'), 
@@ -146,10 +208,6 @@ def get_datasource_metadata(datasource_id: int, session: Session = Depends(get_s
 
 @router.post("/test-connection")
 def test_connection(connection_info: dict):
-    """
-    Test connection to a data source.
-    connection_info: dict containing type, host, port, user, password, database, etc.
-    """
     import os
     import socket
 
@@ -161,7 +219,6 @@ def test_connection(connection_info: dict):
             if not path:
                  return {"status": "error", "message": "File path is required"}
             
-            # Normalize path (handle Windows backslashes if needed, though python usually handles it)
             if os.path.exists(path) and os.path.isfile(path):
                  return {"status": "success", "message": f"Path exists: {path}"}
             else:
@@ -196,7 +253,6 @@ def test_connection(connection_info: dict):
                 port = connection_info.get("port", 3306)
                 database = connection_info.get("database")
                 
-                # Check for required fields. Database might be optional for some tests but generally required for URL construction.
                 if not all([host]):
                      return {"status": "error", "message": "Missing required fields (host)"}
 
@@ -223,15 +279,12 @@ def test_connection(connection_info: dict):
                 if not all([endpoint, access_key, secret_key]):
                     return {"status": "error", "message": "Missing required fields (endpoint, access_key, secret_key)"}
 
-                # 首先检查端点是否可访问（快速网络测试）
                 try:
-                    # 从endpoint提取主机和端口
                     import urllib.parse
                     parsed_url = urllib.parse.urlparse(endpoint)
                     host = parsed_url.netloc.split(':')[0]
                     port = int(parsed_url.netloc.split(':')[1]) if ':' in parsed_url.netloc else 9000
                     
-                    # 设置1秒超时的socket连接测试
                     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     sock.settimeout(1)
                     sock.connect((host, port))
@@ -239,33 +292,26 @@ def test_connection(connection_info: dict):
                 except Exception as e:
                     return {"status": "error", "message": f"MinIO server not reachable: {str(e)}"}
 
-                # 创建带超时设置的boto3客户端
                 s3 = boto3.client(
                     's3',
                     endpoint_url=endpoint,
                     aws_access_key_id=access_key,
                     aws_secret_access_key=secret_key,
                     config=boto3.session.Config(
-                        connect_timeout=2,  # 连接超时2秒
-                        read_timeout=3,     # 读取超时3秒
-                        retries={'max_attempts': 1}  # 只尝试一次
+                        connect_timeout=2,
+                        read_timeout=3,
+                        retries={'max_attempts': 1}
                     )
                 )
                 
-                # 尝试轻量级操作验证连接
                 try:
-                    # 先尝试head_bucket，如果bucket不存在会失败，但至少验证了认证
                     try:
                         s3.head_bucket(Bucket='test')
                     except:
-                        # 如果head_bucket失败，尝试list_buckets但限制响应
                         response = s3.list_buckets()
-                        # 只检查响应是否包含Buckets字段，不处理具体内容
                         if 'Buckets' in response:
                             pass
                 except Exception as e:
-                    # 如果操作失败，但至少网络连接成功，可能是认证或权限问题
-                    # 仍然返回成功，因为连接本身是通的
                     pass
                 
                 return {"status": "success", "message": "Successfully connected to MinIO"}

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlmodel import Session, select, func, col
 from typing import List, Dict, Any
-from app.core.db import get_session, engine
+from app.core.db import get_session, get_engine
 from app.models.task import DataTask
 from app.models.audit import AuditLog
 from app.services.spark_service import submit_spark_job
@@ -93,7 +93,7 @@ def read_task(task_id: int, session: Session = Depends(get_session)):
     return task
 
 def run_spark_job_background(task_id: int):
-    with Session(engine) as session:
+    with Session(get_engine()) as session:
         task = session.get(DataTask, task_id)
         if not task:
             return

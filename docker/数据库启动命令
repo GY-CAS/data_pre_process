@@ -17,13 +17,13 @@ docker run -d \
   -e "MYSQL_ROOT_PASSWORD=123456" \  # 必选：设置root密码（建议强密码）
   -e "MYSQL_USER=admin" \              # 可选：创建普通账户
   -e "MYSQL_PASSWORD=admin" \         # 可选：普通账户密码
-  -e "MYSQL_DATABASE=test_db" \            # 可选：自动创建初始数据库
+ # -e "MYSQL_DATABASE=test_db" \            # 可选：自动创建初始数据库
   -v /opt/mysql/data:/var/lib/mysql \     # 数据持久化（关键：容器删除数据不丢）
-  -v /opt/mysql/conf:/etc/mysql/conf.d \  # 自定义配置文件（可选）
+  #-v /opt/mysql/conf:/etc/mysql/conf.d \  # 自定义配置文件（可选）
   --restart=always \                      # 开机自启（可选，生产推荐）
   mysql:8.0 \                             # MySQL版本（推荐8.0，也可写5.7）
-  --character-set-server=utf8mb4 \        # 设置默认字符集（避免中文乱码）
-  --collation-server=utf8mb4_unicode_ci
+  #--character-set-server=utf8mb4 \        # 设置默认字符集（避免中文乱码）
+  #--collation-server=utf8mb4_unicode_ci
 
 
 #clickhouse

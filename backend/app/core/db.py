@@ -1,50 +1,103 @@
 from sqlmodel import SQLModel, create_engine, Session, text
 from app.core.config import settings
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from urllib.parse import quote_plus
+import logging
 
-connect_args = {}
-database_url = settings.get_database_url()
-if database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+logger = logging.getLogger(__name__)
+
+def get_root_database_url() -> str:
+    encoded_password = quote_plus(settings.MYSQL_PASSWORD)
+    return f"mysql+pymysql://{settings.MYSQL_USER}:{encoded_password}@{settings.MYSQL_HOST}:{settings.MYSQL_PORT}/mysql"
+
+def get_database_url() -> str:
+    encoded_password = quote_plus(settings.MYSQL_PASSWORD)
+    return f"mysql+pymysql://{settings.MYSQL_USER}:{encoded_password}@{settings.MYSQL_HOST}:{settings.MYSQL_PORT}/{settings.SYSTEM_DB_NAME}?charset=utf8mb4"
+
+database_url = get_database_url()
+
+def test_mysql_connection() -> bool:
+    try:
+        import pymysql
+        conn = pymysql.connect(
+            host=settings.MYSQL_HOST,
+            port=settings.MYSQL_PORT,
+            user=settings.MYSQL_USER,
+            password=settings.MYSQL_PASSWORD,
+            charset='utf8mb4',
+            connect_timeout=5
+        )
+        print(f"[DB Test] MySQL connection successful: {settings.MYSQL_HOST}:{settings.MYSQL_PORT}")
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[DB Test] MySQL connection failed: {e}")
+        return False
 
 def create_db_if_not_exists():
-    if database_url.startswith("mysql"):
-        try:
-            # Create a temporary engine without the database name to check/create DB
-            # Parse the URL to remove the DB name for the initial connection
-            # Assuming URL format: mysql+pymysql://user:pass@host:port/dbname
-            root_url = database_url.rsplit("/", 1)[0] 
-            # We need to connect to a default DB, usually 'mysql' or just root. 
-            # SQLAlchemy might need a DB name, so let's try connecting to 'mysql' or just root if driver allows.
-            # PyMySQL allows no DB.
-            # But create_engine needs a valid URL. Let's try connecting to 'information_schema' or 'mysql'
-            # Or just strip the DB name if using pymysql.
-            
-            # Safer approach: Parse components
-            from sqlalchemy.engine.url import make_url
-            url = make_url(database_url)
-            db_name = url.database
-            
-            # Create engine for 'mysql' database to execute CREATE DATABASE
-            # Copy URL and set database to 'mysql' (which always exists) or None
-            root_url = url._replace(database='mysql')
-            
-            tmp_engine = create_engine(root_url, echo=True)
-            with tmp_engine.connect() as conn:
-                conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {db_name}"))
-                print(f"Database {db_name} ensured.")
-        except Exception as e:
-            print(f"Warning: Could not check/create database: {e}")
+    try:
+        if not test_mysql_connection():
+            raise Exception("MySQL server is not reachable")
+        
+        root_url = get_root_database_url()
+        tmp_engine = create_engine(
+            root_url, 
+            echo=False, 
+            pool_pre_ping=True,
+            connect_args={'connect_timeout': 10}
+        )
+        with tmp_engine.connect() as conn:
+            conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{settings.SYSTEM_DB_NAME}` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+            conn.commit()
+            print(f"[DB Init] Database '{settings.SYSTEM_DB_NAME}' ensured.")
+        tmp_engine.dispose()
+    except Exception as e:
+        print(f"[DB Init] Error creating database: {e}")
+        raise
 
-# Call this before creating the main engine? No, main engine is global. 
-# But we can run it before create_db_and_tables.
+engine = None
 
-engine = create_engine(database_url, echo=True, connect_args=connect_args)
+def get_engine():
+    global engine
+    if engine is None:
+        create_db_if_not_exists()
+        engine = create_engine(
+            database_url, 
+            echo=False,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=30,
+            connect_args={
+                'connect_timeout': 10,
+                'charset': 'utf8mb4'
+            }
+        )
+    return engine
 
 def create_db_and_tables():
     create_db_if_not_exists()
-    SQLModel.metadata.create_all(engine)
+    current_engine = get_engine()
+    SQLModel.metadata.create_all(current_engine)
+    print("[DB Init] All tables ensured.")
 
 def get_session():
-    with Session(engine) as session:
+    current_engine = get_engine()
+    with Session(current_engine) as session:
         yield session
+
+def init_database():
+    print(f"[DB Init] Initializing database '{settings.SYSTEM_DB_NAME}'...")
+    print(f"[DB Init] Connecting to {settings.MYSQL_HOST}:{settings.MYSQL_PORT}")
+    create_db_and_tables()
+    print("[DB Init] Database initialization completed.")
+
+def check_database_health() -> dict:
+    try:
+        current_engine = get_engine()
+        with current_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": settings.SYSTEM_DB_NAME, "host": settings.MYSQL_HOST}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}

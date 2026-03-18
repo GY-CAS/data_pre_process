@@ -29,11 +29,10 @@ from app.core.db import get_session
 from app.models.synced_table import SyncedTable
 from app.models.audit import AuditLog
 
-@router.get("/assets", response_model=List[DataAsset])
+@router.get("/assets", response_model=Dict[str, Any])
 def get_assets(session: Session = Depends(get_session)):
     assets = []
     
-    # 1. Scan data dir for files
     if os.path.exists(DATA_DIR):
         for root, dirs, files in os.walk(DATA_DIR):
             for file in files:
@@ -50,7 +49,6 @@ def get_assets(session: Session = Depends(get_session)):
                         rows=0 
                     ))
     
-    # 2. Query Synced Tables from Registry
     synced_tables = session.exec(select(SyncedTable)).all()
     for table in synced_tables:
         asset_type = "table"
@@ -62,13 +60,80 @@ def get_assets(session: Session = Depends(get_session)):
              name=table.table_name,
              type=asset_type,
             path=table.table_name, 
-            size="-", # Size unknown for DB tables
-            source=table.source_type, # Using source_type ('minio', 'clickhouse', 'mysql') as source for UI logic
+            size="-",
+            source=table.source_type,
             rows=table.row_count,
             data_type=table.data_type
         ))
-        
-    return assets
+    
+    return {
+        "data": assets,
+        "total": len(assets)
+    }
+
+@router.get("/assets/search", response_model=Dict[str, Any])
+def search_assets(
+    name: str = None,
+    type: str = None,
+    data_type: str = None,
+    session: Session = Depends(get_session)
+):
+    assets = []
+    
+    if os.path.exists(DATA_DIR):
+        for root, dirs, files in os.walk(DATA_DIR):
+            for file in files:
+                if file.endswith(('.csv', '.parquet', '.json')):
+                    path = os.path.join(root, file)
+                    size = os.path.getsize(path)
+                    assets.append(DataAsset(
+                        id=None,
+                        name=file,
+                        type="file",
+                        path=path,
+                        size=f"{size / 1024:.2f} KB",
+                        source="Local File",
+                        rows=0 
+                    ))
+    
+    synced_tables = session.exec(select(SyncedTable)).all()
+    for table in synced_tables:
+        asset_type = "table"
+        if table.source_type == "minio":
+            asset_type = "bucket"
+            
+        assets.append(DataAsset(
+             id=table.id,
+             name=table.table_name,
+             type=asset_type,
+            path=table.table_name, 
+            size="-",
+            source=table.source_type,
+            rows=table.row_count,
+            data_type=table.data_type
+        ))
+    
+    if name:
+        assets = [a for a in assets if name.lower() in a.name.lower()]
+    if type:
+        assets = [a for a in assets if a.type == type]
+    if data_type:
+        assets = [a for a in assets if a.data_type == data_type]
+    
+    active_filters = []
+    if name:
+        active_filters.append({"field": "name", "value": name, "match_type": "contains"})
+    if type:
+        active_filters.append({"field": "type", "value": type, "match_type": "exact"})
+    if data_type:
+        active_filters.append({"field": "data_type", "value": data_type, "match_type": "exact"})
+    
+    return {
+        "data": assets,
+        "total": len(assets),
+        "filters_applied": len(active_filters),
+        "search_criteria": active_filters
+    }
 
 from clickhouse_driver import Client
 
