@@ -155,7 +155,57 @@ Data Preprocessing System API 是一个用于数据预处理任务的RESTful API
 
 ---
 
-### 1.3 获取单个数据源
+### 1.3 搜索数据源
+
+根据多条件搜索数据源，支持名称、类型、数据类型的组合查询。
+
+**URL**: `GET /datasources/search`
+
+**查询参数 (Query Parameters)**:
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| name | string | 否 | null | 按名称模糊搜索（包含匹配） |
+| type | string | 否 | null | 按源类型精确过滤：`mysql`, `clickhouse`, `minio` |
+| data_type | string | 否 | null | 按数据类型精确过滤：`TEXT`, `TIMESERIES`, `IMAGE` |
+| skip | integer | 否 | 0 | 跳过记录数（分页偏移） |
+| limit | integer | 否 | 10 | 返回记录数（分页大小） |
+
+**响应 (200 OK)**:
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "my_mysql",
+      "type": "mysql",
+      "description": "MySQL数据源",
+      "data_type": "TEXT",
+      "connection_info": "...",
+      "created_at": "2024-01-01T00:00:00",
+      "updated_at": "2024-01-01T00:00:00"
+    }
+  ],
+  "total": 5,
+  "skip": 0,
+  "limit": 10,
+  "filters_applied": 2,
+  "search_criteria": [
+    {"field": "name", "value": "mysql", "match_type": "contains"},
+    {"field": "type", "value": "mysql", "match_type": "exact"}
+  ]
+}
+```
+
+**说明**:
+- 多个筛选条件之间为"与"逻辑关系
+- `filters_applied` 表示当前应用的筛选条件数量
+- `search_criteria` 返回当前搜索条件的详细信息
+
+---
+
+### 1.4 获取单个数据源
 
 根据ID获取指定数据源的详细信息。
 
@@ -778,6 +828,52 @@ Data Preprocessing System API 是一个用于数据预处理任务的RESTful API
 |------|------|------|
 | type | string | 资产类型：`file`(本地文件), `table`(数据库表), `bucket`(对象存储桶) |
 | source | string | 数据来源：`Local File`, `mysql`, `clickhouse`, `minio` |
+
+---
+
+### 4.2 搜索数据资产
+
+根据多条件搜索数据资产，支持名称、类型、数据类型的组合查询。
+
+**URL**: `GET /data-mgmt/assets/search`
+
+**查询参数 (Query Parameters)**:
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| name | string | 否 | null | 按名称模糊搜索（包含匹配） |
+| type | string | 否 | null | 按资产类型精确过滤：`file`, `table`, `bucket` |
+| data_type | string | 否 | null | 按数据类型精确过滤：`TEXT`, `TIMESERIES`, `IMAGE` |
+
+**响应 (200 OK)**:
+
+```json
+{
+  "data": [
+    {
+      "id": 2,
+      "name": "synced_table",
+      "type": "table",
+      "path": "synced_table",
+      "size": "-",
+      "source": "clickhouse",
+      "rows": 10000,
+      "data_type": "TIMESERIES"
+    }
+  ],
+  "total": 1,
+  "filters_applied": 2,
+  "search_criteria": [
+    {"field": "type", "value": "table", "match_type": "exact"},
+    {"field": "data_type", "value": "TIMESERIES", "match_type": "exact"}
+  ]
+}
+```
+
+**说明**:
+- 多个筛选条件之间为"与"逻辑关系
+- `filters_applied` 表示当前应用的筛选条件数量
+- `search_criteria` 返回当前搜索条件的详细信息
 | data_type | string | 数据类型：`TIMESERIES`, `IMAGE`, `NER`, null |
 
 ---

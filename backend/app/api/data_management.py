@@ -210,82 +210,127 @@ def _pick_mysql_rowid_column(inspector, table_name: str) -> Optional[str]:
     return None
 
 @router.get("/preview")
-def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: int = 0, session: Session = Depends(get_session)):
-    # Check if file exists (Local File)
+def preview_data(
+    path: str, 
+    id: Optional[int] = None, 
+    page: int = 1, 
+    pageSize: int = 20, 
+    sortField: str = None,
+    sortOrder: str = None,
+    limit: int = None,
+    offset: int = None,
+    session: Session = Depends(get_session)
+):
+    if limit is not None and offset is not None:
+        actual_limit = limit
+        actual_offset = offset
+    else:
+        actual_limit = pageSize
+        actual_offset = (page - 1) * pageSize
+    
+    if sortOrder and sortOrder.lower() not in ('asc', 'desc'):
+        raise HTTPException(status_code=400, detail="sortOrder must be 'asc' or 'desc'")
+    
     if os.path.exists(path) and id is None:
         try:
             if path.endswith('.csv'):
-                df = pd.read_csv(path, nrows=limit, skiprows=lambda x: x > 0 and x < offset) 
-                if offset == 0:
-                    df = pd.read_csv(path, nrows=limit)
-                else:
-                    df = pd.read_csv(path, skiprows=range(1, offset+1), nrows=limit)
+                df = pd.read_csv(path)
+                if sortField and sortField in df.columns:
+                    ascending = sortOrder.lower() == 'asc' if sortOrder else True
+                    df = df.sort_values(by=sortField, ascending=ascending)
+                total_rows = len(df)
+                df = df.iloc[actual_offset:actual_offset+actual_limit]
             elif path.endswith('.parquet'):
                 df = pd.read_parquet(path)
-                df = df.iloc[offset:offset+limit]
+                if sortField and sortField in df.columns:
+                    ascending = sortOrder.lower() == 'asc' if sortOrder else True
+                    df = df.sort_values(by=sortField, ascending=ascending)
+                total_rows = len(df)
+                df = df.iloc[actual_offset:actual_offset+actual_limit]
             elif path.endswith('.json'):
                 df = pd.read_json(path, orient='records', lines=True)
-                df = df.iloc[offset:offset+limit]
+                if sortField and sortField in df.columns:
+                    ascending = sortOrder.lower() == 'asc' if sortOrder else True
+                    df = df.sort_values(by=sortField, ascending=ascending)
+                total_rows = len(df)
+                df = df.iloc[actual_offset:actual_offset+actual_limit]
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file type")
             
             df = df.where(pd.notnull(df), None)
+            total_pages = (total_rows + actual_limit - 1) // actual_limit if total_rows > 0 else 0
+            
             return {
                 "columns": df.columns.tolist(),
                 "data": df.to_dict(orient="records"),
-                "total": 1000 
+                "pagination": {
+                    "page": page if limit is None else (actual_offset // actual_limit + 1),
+                    "pageSize": actual_limit,
+                    "total": total_rows,
+                    "totalPages": total_pages
+                },
+                "sort": {
+                    "field": sortField,
+                    "order": sortOrder
+                } if sortField else None
             }
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
     
-    # Check SyncedTable registry
     synced_table = None
     if id:
         synced_table = session.get(SyncedTable, id)
     
     if not synced_table:
-        # Fallback to name search if ID not provided (backward compatibility) or not found
         synced_table = session.exec(select(SyncedTable).where(SyncedTable.table_name == path)).first()
     
     if synced_table:
-        path = synced_table.table_name # Ensure we use the correct name from DB if fetched by ID
+        path = synced_table.table_name
         if synced_table.source_type == 'clickhouse':
-            # Fetch from Target ClickHouse
             try:
                 client = get_ck_client()
                 column_types = _get_clickhouse_columns_and_types(client, path)
                 columns = list(column_types.keys())
                 rowid_col = _pick_rowid_column(columns)
-                # Get Total
                 total = client.execute(f"SELECT count(*) FROM {_ch_quote_ident(path)}")[0][0]
                 
-                # Get Data (ClickHouse doesn't support OFFSET without LIMIT properly, but LIMIT offset, limit works)
-                data = client.execute(f"SELECT * FROM {_ch_quote_ident(path)} LIMIT {offset}, {limit}")
+                order_clause = ""
+                if sortField:
+                    if sortField not in columns:
+                        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sortField}")
+                    safe_sort_field = _ch_quote_ident(sortField)
+                    order = "ASC" if sortOrder and sortOrder.lower() == 'asc' else "DESC"
+                    order_clause = f" ORDER BY {safe_sort_field} {order}"
                 
-                # Map to dict
+                data = client.execute(f"SELECT * FROM {_ch_quote_ident(path)}{order_clause} LIMIT {actual_offset}, {actual_limit}")
+                
                 formatted_data = []
                 for row in data:
                     row_dict = dict(zip(columns, row))
                     row_dict["_rowid"] = row_dict.get(rowid_col)
                     formatted_data.append(row_dict)
 
+                total_pages = (total + actual_limit - 1) // actual_limit
+
                 return {
                     "columns": columns,
                     "data": formatted_data,
-                    "total": total,
+                    "pagination": {
+                        "page": page if limit is None else (actual_offset // actual_limit + 1),
+                        "pageSize": actual_limit,
+                        "total": total,
+                        "totalPages": total_pages
+                    },
+                    "sort": {
+                        "field": sortField,
+                        "order": sortOrder
+                    } if sortField else None,
                     "meta": {"source": "clickhouse", "editable": True, "rowid_col": rowid_col}
                 }
             except Exception as e:
                  raise HTTPException(status_code=500, detail=f"ClickHouse Error: {str(e)}")
         
         elif synced_table.source_type == 'minio':
-             # MinIO doesn't support tabular preview in this way easily if it's a bucket.
-             # If it's a single file synced, maybe? 
-             # But our sync logic syncs a bucket.
-             # So 'path' is a bucket name.
-             # We should probably list files or just return a message?
-             # Or we can return a list of files as "data"?
-             
              import boto3
              from botocore.client import Config
              
@@ -297,11 +342,19 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                     config=Config(signature_version='s3v4')
                  )
                  
-                 # List objects
-                 objs = s3.list_objects_v2(Bucket=path, MaxKeys=limit) # Ignore offset for now or implement continuation token logic
+                 objs = s3.list_objects_v2(Bucket=path, MaxKeys=actual_limit)
                  
                  if 'Contents' not in objs:
-                      return {"columns": ["Key", "Size", "LastModified"], "data": [], "total": 0}
+                      return {
+                          "columns": ["Key", "Size", "LastModified"], 
+                          "data": [], 
+                          "pagination": {
+                              "page": page,
+                              "pageSize": actual_limit,
+                              "total": 0,
+                              "totalPages": 0
+                          }
+                      }
                  
                  data = []
                  for obj in objs['Contents']:
@@ -309,43 +362,51 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                          "Key": obj['Key'],
                          "Size": obj['Size'],
                          "LastModified": str(obj['LastModified']),
-                         "_rowid": obj['ETag'] # Use ETag as ID
+                         "_rowid": obj['ETag']
                      })
+                     
+                 total_count = objs.get('KeyCount', 0)
+                 total_pages = (total_count + actual_limit - 1) // actual_limit
                      
                  return {
                      "columns": ["Key", "Size", "LastModified"],
                      "data": data,
-                    "total": objs.get('KeyCount', 0), # Approximation or need to count
-                    "meta": {"source": "minio", "editable": False}
+                     "pagination": {
+                         "page": page,
+                         "pageSize": actual_limit,
+                         "total": total_count,
+                         "totalPages": total_pages
+                     },
+                     "meta": {"source": "minio", "editable": False}
                  }
              except Exception as e:
                   raise HTTPException(status_code=500, detail=f"MinIO Preview Error: {str(e)}")
 
-    # Fallback to System MySQL DB
     try:
         engine = create_engine(settings.SYSTEM_DB_URL)
         inspector = inspect(engine)
         if path in inspector.get_table_names():
             with engine.connect() as conn:
-                # Use backticks for MySQL table names to handle special characters
                 safe_path = f"`{path}`"
                 
-                # Get total count
                 total = conn.execute(text(f"SELECT COUNT(*) FROM {safe_path}")).scalar()
                 
-                # Get data with rowid
-                # MySQL doesn't have a stable 'rowid' like SQLite, but we can use PK or just rely on offsets if no editing.
-                # For editing, we need a PK. Let's assume there is an 'id' column or similar.
-                # If the table was created by us (pandas to_sql), it might have an 'index' column if index=True, or no PK.
-                # For safety, let's try to find the PK.
                 rowid_col = _pick_mysql_rowid_column(inspector, path)
                 
-                # Fetch data
-                # Construct query. We simulate '_rowid' with the PK.
+                order_clause = ""
+                if sortField:
+                    columns_info = inspector.get_columns(path)
+                    column_names = [col['name'] for col in columns_info]
+                    if sortField not in column_names:
+                        raise HTTPException(status_code=400, detail=f"Invalid sort field: {sortField}")
+                    safe_sort_field = _mysql_quote_ident(sortField)
+                    order = "ASC" if sortOrder and sortOrder.lower() == 'asc' else "DESC"
+                    order_clause = f" ORDER BY {safe_sort_field} {order}"
+                
                 if rowid_col:
-                    query = text(f"SELECT {_mysql_quote_ident(rowid_col)} as _rowid, * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
+                    query = text(f"SELECT {_mysql_quote_ident(rowid_col)} as _rowid, * FROM {safe_path}{order_clause} LIMIT {actual_limit} OFFSET {actual_offset}")
                 else:
-                    query = text(f"SELECT * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
+                    query = text(f"SELECT * FROM {safe_path}{order_clause} LIMIT {actual_limit} OFFSET {actual_offset}")
                 try:
                     result = conn.execute(query)
                     columns = result.keys()
@@ -357,27 +418,36 @@ def preview_data(path: str, id: Optional[int] = None, limit: int = 20, offset: i
                         data = []
                         for idx, row in enumerate(raw_rows):
                             row_dict = dict(zip(columns, row))
-                            row_dict["_rowid"] = offset + idx
+                            row_dict["_rowid"] = actual_offset + idx
                             data.append(row_dict)
                         editable = False
                 except Exception as query_err:
-                    # Fallback if PK assumption fails or other issue
                     print(f"Query failed: {query_err}. Trying simple select.")
-                    query = text(f"SELECT * FROM {safe_path} LIMIT {limit} OFFSET {offset}")
+                    query = text(f"SELECT * FROM {safe_path}{order_clause} LIMIT {actual_limit} OFFSET {actual_offset}")
                     result = conn.execute(query)
                     columns = result.keys()
-                    # Generate fake rowids for display if needed, but editing won't work well
                     data = []
                     for idx, row in enumerate(result.fetchall()):
                          row_dict = dict(zip(columns, row))
-                         row_dict['_rowid'] = offset + idx # Fake ID
+                         row_dict['_rowid'] = actual_offset + idx
                          data.append(row_dict)
                     editable = False
+                
+                total_pages = (total + actual_limit - 1) // actual_limit
                 
                 return {
                     "columns": list(columns),
                     "data": data,
-                    "total": total,
+                    "pagination": {
+                        "page": page if limit is None else (actual_offset // actual_limit + 1),
+                        "pageSize": actual_limit,
+                        "total": total,
+                        "totalPages": total_pages
+                    },
+                    "sort": {
+                        "field": sortField,
+                        "order": sortOrder
+                    } if sortField else None,
                     "meta": {"source": "mysql", "editable": editable, "rowid_col": rowid_col if editable else None}
                 }
     except Exception as e:
@@ -906,10 +976,9 @@ def get_complete_assets(session: Session = Depends(get_session)):
         
         # Add storage-specific details
         if table.source_type == "mysql":
-            # MySQL data stored in SQLite
             asset["storage"] = {
-                "type": "sqlite",
-                "location": "backend/database.db",
+                "type": "mysql",
+                "location": settings.SYSTEM_DB_NAME,
                 "table_name": table.table_name
             }
         elif table.source_type == "minio":

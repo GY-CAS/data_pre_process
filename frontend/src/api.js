@@ -34,7 +34,13 @@ export const createAuditLog = (data) => api.post('/audit/', data);
 export const getDataAssets = () => api.get('/data-mgmt/assets');
 export const searchDataAssets = (params) => api.get('/data-mgmt/assets/search', { params });
 export const deleteDataAsset = (name) => api.delete(`/data-mgmt/${name}`);
-export const previewData = (path, limit = 20, offset = 0, id = null) => api.get('/data-mgmt/preview', { params: { path, limit, offset, id } });
+export const previewData = (path, page = 1, pageSize = 20, sortField = null, sortOrder = null, id = null) => {
+  const params = { path, page, pageSize };
+  if (sortField) params.sortField = sortField;
+  if (sortOrder) params.sortOrder = sortOrder;
+  if (id) params.id = id;
+  return api.get('/data-mgmt/preview', { params });
+};
 export const getDataStructure = (path, id = null) => api.get('/data-mgmt/structure', { params: { path, id } });
 export const updateTableRow = (table, rowId, data) => {
   const encodedTable = encodeURIComponent(String(table));

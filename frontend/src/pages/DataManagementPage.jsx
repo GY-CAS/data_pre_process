@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { Folder, Eye, FileText, Download, Table as TableIcon, Database, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, AlertTriangle, ArrowUp, ArrowDown } from 'lucide-react';
 import { searchDataAssets, deleteDataAsset, previewData, getDataStructure, updateTableRow, deleteTableRow, downloadDataAsset } from '../api';
 import { Modal } from '../components/Common';
 import { Search, Filter } from 'lucide-react';
@@ -16,6 +16,9 @@ const ASSET_TYPE_OPTIONS = [
   { value: 'file', label: '本地文件' }
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+const PREVIEW_PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+
 const DataManagementPage = () => {
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
@@ -31,17 +34,26 @@ const DataManagementPage = () => {
   const [searchTimeout, setSearchTimeout] = useState(null);
 
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  
   const [previewPage, setPreviewPage] = useState(1);
-  const [previewPageSize] = useState(20);
+  const [previewPageSize, setPreviewPageSize] = useState(20);
   const [previewTotal, setPreviewTotal] = useState(0);
+  const [previewTotalPages, setPreviewTotalPages] = useState(0);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+  const [sortField, setSortField] = useState(null);
+  const [sortOrder, setSortOrder] = useState(null);
 
   const [editingRowId, setEditingRowId] = useState(null);
   const [editData, setEditData] = useState({});
 
   useEffect(() => {
     const savedFilters = localStorage.getItem('datamanagement_filters');
+    const savedPageSize = localStorage.getItem('datamanagement_pageSize');
+    const savedPreviewPageSize = localStorage.getItem('datamanagement_previewPageSize');
+    
     if (savedFilters) {
       try {
         const parsed = JSON.parse(savedFilters);
@@ -50,11 +62,25 @@ const DataManagementPage = () => {
         console.error('Failed to parse saved filters', e);
       }
     }
+    if (savedPageSize) {
+      setPageSize(parseInt(savedPageSize));
+    }
+    if (savedPreviewPageSize) {
+      setPreviewPageSize(parseInt(savedPreviewPageSize));
+    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem('datamanagement_filters', JSON.stringify(filters));
   }, [filters]);
+
+  useEffect(() => {
+    localStorage.setItem('datamanagement_pageSize', pageSize.toString());
+  }, [pageSize]);
+
+  useEffect(() => {
+    localStorage.setItem('datamanagement_previewPageSize', previewPageSize.toString());
+  }, [previewPageSize]);
 
   const fetchAssets = useCallback(async () => {
     try {
@@ -126,24 +152,54 @@ const DataManagementPage = () => {
       }
   };
 
-  const handlePreview = async (asset, pageNum = 1) => {
+  const handlePreview = useCallback(async (asset, pageNum = 1, pPageSize = previewPageSize, pSortField = sortField, pSortOrder = sortOrder) => {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    
     try {
-      const offset = (pageNum - 1) * previewPageSize;
-      const res = await previewData(asset.path, previewPageSize, offset, asset.id);
+      const res = await previewData(asset.path, pageNum, pPageSize, pSortField, pSortOrder, asset.id);
       setPreviewContent(res.data);
-      setPreviewTotal(res.data.total || 0); 
+      
+      if (res.data.pagination) {
+        setPreviewTotal(res.data.pagination.total);
+        setPreviewTotalPages(res.data.pagination.totalPages);
+        setPreviewPage(res.data.pagination.page);
+      } else {
+        setPreviewTotal(res.data.total || 0);
+        setPreviewTotalPages(Math.ceil((res.data.total || 0) / pPageSize));
+      }
+      
       setSelectedAsset(asset);
       setModalType('preview');
-      setPreviewPage(pageNum);
       setEditingRowId(null);
     } catch (err) {
-      alert('加载预览失败: ' + err.message);
+      setPreviewError(err.response?.data?.detail || err.message || '加载预览失败');
+    } finally {
+      setPreviewLoading(false);
     }
-  };
+  }, [previewPageSize, sortField, sortOrder]);
 
   const handlePreviewPageChange = (newPage) => {
-      if (newPage < 1) return;
-      handlePreview(selectedAsset, newPage);
+    if (newPage < 1 || newPage > previewTotalPages) return;
+    handlePreview(selectedAsset, newPage, previewPageSize, sortField, sortOrder);
+  };
+
+  const handlePreviewPageSizeChange = (newSize) => {
+    setPreviewPageSize(newSize);
+    handlePreview(selectedAsset, 1, newSize, sortField, sortOrder);
+  };
+
+  const handleSort = (field) => {
+    const newOrder = sortField === field && sortOrder === 'asc' ? 'desc' : 'asc';
+    setSortField(field);
+    setSortOrder(newOrder);
+    handlePreview(selectedAsset, 1, previewPageSize, field, newOrder);
+  };
+
+  const handleRetryPreview = () => {
+    if (selectedAsset) {
+      handlePreview(selectedAsset, previewPage, previewPageSize, sortField, sortOrder);
+    }
   };
 
   const handleStructure = async (asset) => {
@@ -227,6 +283,9 @@ const DataManagementPage = () => {
       setMinioLinks(null);
       setStructureContent(null);
       setEditingRowId(null);
+      setPreviewError(null);
+      setSortField(null);
+      setSortOrder(null);
   };
 
   const handleEditClick = (row) => {
@@ -249,7 +308,7 @@ const DataManagementPage = () => {
       try {
           await updateTableRow(selectedAsset.path, editingRowId, editData);
           setEditingRowId(null);
-          handlePreview(selectedAsset, previewPage);
+          handlePreview(selectedAsset, previewPage, previewPageSize, sortField, sortOrder);
       } catch (err) {
           alert('更新失败: ' + (err.response?.data?.detail || err.message));
       }
@@ -265,7 +324,7 @@ const DataManagementPage = () => {
       if (confirm('确认删除此行?')) {
           try {
               await deleteTableRow(selectedAsset.path, rowId);
-              handlePreview(selectedAsset, previewPage);
+              handlePreview(selectedAsset, previewPage, previewPageSize, sortField, sortOrder);
           } catch (err) {
               alert('删除失败: ' + (err.response?.data?.detail || err.message));
           }
@@ -277,9 +336,9 @@ const DataManagementPage = () => {
   };
 
   const totalPages = Math.ceil(total / pageSize);
-  const totalPreviewPages = Math.ceil(previewTotal / previewPageSize);
 
   const [jumpPage, setJumpPage] = useState('');
+  const [previewJumpPage, setPreviewJumpPage] = useState('');
 
   const handleJump = () => {
       const p = parseInt(jumpPage);
@@ -287,6 +346,19 @@ const DataManagementPage = () => {
           setPage(p);
           setJumpPage('');
       }
+  };
+
+  const handlePreviewJump = () => {
+      const p = parseInt(previewJumpPage);
+      if (!isNaN(p) && p >= 1 && p <= previewTotalPages) {
+          handlePreviewPageChange(p);
+          setPreviewJumpPage('');
+      }
+  };
+
+  const renderSortIcon = (field) => {
+    if (sortField !== field) return null;
+    return sortOrder === 'asc' ? <ArrowUp size={12} className="inline ml-1" /> : <ArrowDown size={12} className="inline ml-1" />;
   };
 
   return (
@@ -468,8 +540,22 @@ const DataManagementPage = () => {
       </div>
       
       <div className="mt-auto pt-4 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-sm text-slate-500">
-             共 {total} 条
+          <div className="flex items-center gap-4">
+              <span className="text-sm text-slate-500">
+                  共 {total} 条
+              </span>
+              <div className="flex items-center gap-2">
+                  <label className="text-sm text-slate-500">每页:</label>
+                  <select 
+                      value={pageSize}
+                      onChange={e => { setPageSize(parseInt(e.target.value)); setPage(1); }}
+                      className="bg-white border border-slate-200 rounded px-2 py-1 text-sm text-slate-700 focus:outline-none focus:border-purple-500"
+                  >
+                      {PAGE_SIZE_OPTIONS.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                  </select>
+              </div>
           </div>
           <div className="flex gap-2 items-center">
              <div className="flex items-center gap-2 mr-4">
@@ -477,7 +563,7 @@ const DataManagementPage = () => {
                   <input 
                       type="number" 
                       min="1" 
-                      max={totalPages}
+                      max={totalPages || 1}
                       className="w-12 h-8 text-center bg-white border border-slate-200 rounded text-sm text-slate-700 focus:outline-none focus:border-purple-500"
                       value={jumpPage}
                       onChange={e => setJumpPage(e.target.value)}
@@ -530,80 +616,165 @@ const DataManagementPage = () => {
 
       <Modal isOpen={modalType === 'preview'} onClose={closeModal} title={`预览: ${selectedAsset?.name}`}>
         <div className="flex flex-col h-[70vh]">
-            <div className="overflow-auto flex-1 border border-slate-700 rounded mb-4">
-                {previewContent ? (
-                    <table className="w-full text-left text-xs border-collapse">
-                        <thead className="sticky top-0 z-10">
-                            <tr className="bg-slate-800 text-slate-300 shadow-sm">
-                                {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false && <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>}
-                                {previewContent.columns.filter(c => c !== '_rowid').map(col => (
-                                    <th key={col} className="p-2 border border-slate-700 bg-slate-800 whitespace-nowrap">{col}</th>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {previewContent.data.map((row, i) => (
-                                <tr key={i} className="hover:bg-slate-800/50 group">
+            {previewLoading && (
+                <div className="flex items-center justify-center h-32">
+                    <Loader2 size={32} className="animate-spin text-purple-500" />
+                    <span className="ml-2 text-slate-500">加载中...</span>
+                </div>
+            )}
+            
+            {previewError && (
+                <div className="flex flex-col items-center justify-center h-32 text-rose-500">
+                    <AlertTriangle size={32} />
+                    <span className="mt-2">{previewError}</span>
+                    <button 
+                        onClick={handleRetryPreview}
+                        className="mt-2 px-4 py-1 bg-rose-100 text-rose-600 rounded hover:bg-rose-200 text-sm"
+                    >
+                        重试
+                    </button>
+                </div>
+            )}
+            
+            {!previewLoading && !previewError && previewContent && (
+                <>
+                    <div className="flex items-center justify-between mb-4 px-2">
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm text-slate-400">
+                                显示 {((previewPage - 1) * previewPageSize) + 1} - {Math.min(previewPage * previewPageSize, previewTotal)} 共 {previewTotal} 行
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <label className="text-sm text-slate-500">每页:</label>
+                                <select 
+                                    value={previewPageSize}
+                                    onChange={e => handlePreviewPageSizeChange(parseInt(e.target.value))}
+                                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-300 focus:outline-none focus:border-purple-500"
+                                >
+                                    {PREVIEW_PAGE_SIZE_OPTIONS.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        {previewContent.sort && (
+                            <span className="text-xs text-slate-500">
+                                排序: {previewContent.sort.field} ({previewContent.sort.order})
+                            </span>
+                        )}
+                    </div>
+                    
+                    <div className="overflow-auto flex-1 border border-slate-700 rounded">
+                        <table className="w-full text-left text-xs border-collapse">
+                            <thead className="sticky top-0 z-10">
+                                <tr className="bg-slate-800 text-slate-300 shadow-sm">
                                     {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false && (
-                                        <td className="p-2 border border-slate-700 whitespace-nowrap">
-                                            {editingRowId === row._rowid ? (
-                                                <div className="flex gap-2">
-                                                    <button onClick={handleSaveClick} className="text-emerald-500 hover:text-emerald-400"><Check size={14}/></button>
-                                                    <button onClick={handleCancelEdit} className="text-rose-500 hover:text-rose-400"><X size={14}/></button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleEditClick(row)} className="text-blue-500 hover:text-blue-400"><Edit2 size={14}/></button>
-                                                    <button onClick={() => handleDeleteClick(row._rowid)} className="text-rose-500 hover:text-rose-400"><Trash2 size={14}/></button>
-                                                </div>
-                                            )}
-                                        </td>
+                                        <th className="p-2 border border-slate-700 w-24 bg-slate-800">操作</th>
                                     )}
                                     {previewContent.columns.filter(c => c !== '_rowid').map(col => (
-                                        <td key={col} className="p-2 border border-slate-700 text-slate-400 whitespace-nowrap max-w-[200px] truncate">
-                                            {editingRowId === row._rowid ? (
-                                                <input 
-                                                    className="w-full bg-slate-900 border border-slate-600 rounded px-1 text-slate-200 focus:border-purple-500 outline-none"
-                                                    value={editData[col] !== null ? editData[col] : ''}
-                                                    onChange={e => handleInputChange(col, e.target.value)}
-                                                />
-                                            ) : (
-                                                <span title={String(row[col])}>{String(row[col])}</span>
-                                            )}
-                                        </td>
+                                        <th 
+                                            key={col} 
+                                            className="p-2 border border-slate-700 bg-slate-800 whitespace-nowrap cursor-pointer hover:bg-slate-700"
+                                            onClick={() => handleSort(col)}
+                                        >
+                                            {col} {renderSortIcon(col)}
+                                        </th>
                                     ))}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                ) : (
-                    <div className="p-8 text-center text-slate-500 flex items-center justify-center h-full">加载中...</div>
-                )}
-            </div>
-            
-            {previewContent && (
-                <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700 pt-4">
-                    <div>
-                        显示 {((previewPage - 1) * previewPageSize) + 1} - {Math.min(previewPage * previewPageSize, previewTotal)} 共 {previewTotal} 行
+                            </thead>
+                            <tbody>
+                                {previewContent.data.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={previewContent.columns.length + 1} className="p-8 text-center text-slate-500">
+                                            无数据
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    previewContent.data.map((row, i) => (
+                                        <tr key={i} className="hover:bg-slate-800/50 group">
+                                            {selectedAsset?.type === 'table' && selectedAsset?.source !== 'minio' && previewContent?.meta?.editable !== false && (
+                                                <td className="p-2 border border-slate-700 whitespace-nowrap">
+                                                    {editingRowId === row._rowid ? (
+                                                        <div className="flex gap-2">
+                                                            <button onClick={handleSaveClick} className="text-emerald-500 hover:text-emerald-400"><Check size={14}/></button>
+                                                            <button onClick={handleCancelEdit} className="text-rose-500 hover:text-rose-400"><X size={14}/></button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={() => handleEditClick(row)} className="text-blue-500 hover:text-blue-400"><Edit2 size={14}/></button>
+                                                            <button onClick={() => handleDeleteClick(row._rowid)} className="text-rose-500 hover:text-rose-400"><Trash2 size={14}/></button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                            )}
+                                            {previewContent.columns.filter(c => c !== '_rowid').map(col => (
+                                                <td key={col} className="p-2 border border-slate-700 text-slate-400 whitespace-nowrap max-w-[200px] truncate">
+                                                    {editingRowId === row._rowid ? (
+                                                        <input 
+                                                            className="w-full bg-slate-900 border border-slate-600 rounded px-1 text-slate-200 focus:border-purple-500 outline-none"
+                                                            value={editData[col] !== null ? editData[col] : ''}
+                                                            onChange={e => handleInputChange(col, e.target.value)}
+                                                        />
+                                                    ) : (
+                                                        <span title={String(row[col])}>{String(row[col])}</span>
+                                                    )}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button 
-                            onClick={() => handlePreviewPageChange(previewPage - 1)}
-                            disabled={previewPage <= 1}
-                            className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
-                        >
-                            <ChevronLeft size={20} />
-                        </button>
-                        <span className="font-mono bg-slate-800 px-2 py-1 rounded">{previewPage} / {totalPreviewPages || 1}</span>
-                        <button 
-                            onClick={() => handlePreviewPageChange(previewPage + 1)}
-                            disabled={previewPage >= totalPreviewPages}
-                            className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
-                        >
-                            <ChevronRight size={20} />
-                        </button>
+                    
+                    <div className="flex justify-between items-center text-sm text-slate-400 border-t border-slate-700 pt-4 mt-4">
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => handlePreviewPageChange(1)}
+                                disabled={previewPage <= 1}
+                                className="px-2 py-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent text-xs"
+                            >
+                                首页
+                            </button>
+                            <button 
+                                onClick={() => handlePreviewPageChange(previewPage - 1)}
+                                disabled={previewPage <= 1}
+                                className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
+                            >
+                                <ChevronLeft size={20} />
+                            </button>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="number" 
+                                min="1" 
+                                max={previewTotalPages || 1}
+                                className="w-12 h-7 text-center bg-slate-800 border border-slate-700 rounded text-sm text-slate-300 focus:outline-none focus:border-purple-500"
+                                value={previewJumpPage}
+                                onChange={e => setPreviewJumpPage(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handlePreviewJump()}
+                            />
+                            <span className="font-mono">/ {previewTotalPages || 1}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => handlePreviewPageChange(previewPage + 1)}
+                                disabled={previewPage >= previewTotalPages}
+                                className="p-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent"
+                            >
+                                <ChevronRight size={20} />
+                            </button>
+                            <button 
+                                onClick={() => handlePreviewPageChange(previewTotalPages)}
+                                disabled={previewPage >= previewTotalPages}
+                                className="px-2 py-1 rounded hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent text-xs"
+                            >
+                                末页
+                            </button>
+                        </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
       </Modal>

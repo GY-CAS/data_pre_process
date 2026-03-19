@@ -3,7 +3,7 @@ from pymysql.err import OperationalError, ProgrammingError
 
 # -------------------------- 数据库配置（适配你的环境） --------------------------
 DB_CONFIG = {
-    "host": "192.168.1.19",  # 宿主机IP（或填 localhost/127.0.0.1）
+    "host": "localhost",  # 宿主机IP（或填 localhost/127.0.0.1）
     "port": 3106,            # 宿主机映射端口（不是容器3306）
     "user": "root",          # 用户名（已改为 root）
     "password": "12345678",  # 密码
