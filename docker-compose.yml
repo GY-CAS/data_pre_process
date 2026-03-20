@@ -1,0 +1,49 @@
+services:
+  # Backend API Service - connects to external databases
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: data_preprocess_backend
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    ports:
+      - "8007:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app-network
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Frontend Web Application
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: data_preprocess_frontend
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      # 使用默认值兜底，确保环境变量不为空
+      BACKEND_URL: "${BACKEND_URL:-http://host.docker.internal:8007}" #需要与backend的映射端口一致
+      FRONTEND_PORT: "13000"
+    ports:
+      - "13005:13000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge

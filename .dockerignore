@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+
+# Build
+dist/
+build/
+
+# Test
+tests/
+*.test.js
+*.test.ts
+
+# Docs
+docs/
+*.md
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Data
+data/
+temp/
+tmp/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Misc
+*.log
+*.lock
+.DS_Store
+Thumbs.db
+
+# 忽略 MySQL 数据目录
+mysql_data/
+*.sock
+*.pid

@@ -11,9 +11,9 @@ const DATA_TYPE_OPTIONS = [
 ];
 
 const ASSET_TYPE_OPTIONS = [
-  { value: 'table', label: '数据库表' },
-  { value: 'bucket', label: 'MinIO 存储桶' },
-  { value: 'file', label: '本地文件' }
+  { value: 'table', label: 'MySQL' },
+  { value: 'clickhouse', label: 'ClickHouse' },
+  { value: 'bucket', label: 'MinIO(S3)' }
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
@@ -383,9 +383,10 @@ const DataManagementPage = () => {
                 />
             </div>
             
-            <div className="w-48">
+            <div className="flex items-center gap-2">
+                <label className="text-sm text-slate-500">数据源类型:</label>
                 <select 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
+                    className="w-40 bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500/20"
                     value={filters.type}
                     onChange={e => handleFilterChange('type', e.target.value)}
                 >

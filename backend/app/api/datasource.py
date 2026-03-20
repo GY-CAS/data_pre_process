@@ -69,8 +69,8 @@ def search_datasources(
     name: str = None,
     type: str = None,
     data_type: str = None,
-    skip: int = 0,
-    limit: int = 10,
+    page_num: int = 0,
+    page_size: int = 10,
     session: Session = Depends(get_session)
 ):
     query = select(DataSource)
@@ -85,7 +85,7 @@ def search_datasources(
     count_query = select(func.count()).select_from(query.subquery())
     total = session.exec(count_query).one()
 
-    datasources = session.exec(query.offset(skip).limit(limit)).all()
+    datasources = session.exec(query.offset((page_num-1)*page_size).limit(page_size)).all()
     
     active_filters = []
     if name:
@@ -98,8 +98,8 @@ def search_datasources(
     return {
         "data": datasources,
         "total": total,
-        "skip": skip,
-        "limit": limit,
+        "page_num": page_num,
+        "page_size": page_size,
         "filters_applied": len(active_filters),
         "search_criteria": active_filters
     }

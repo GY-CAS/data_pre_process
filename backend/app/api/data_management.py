@@ -51,14 +51,16 @@ def get_assets(session: Session = Depends(get_session)):
     
     synced_tables = session.exec(select(SyncedTable)).all()
     for table in synced_tables:
-        asset_type = "table"
+        asset_type = "mysql"
         if table.source_type == "minio":
-            asset_type = "bucket"
+            asset_type = "minio"
+        if table.source_type == "clickhouse":
+            asset_type = "clickhouse"
             
         assets.append(DataAsset(
-             id=table.id,
-             name=table.table_name,
-             type=asset_type,
+            id=table.id,
+            name=table.table_name,
+            type=asset_type,
             path=table.table_name, 
             size="-",
             source=table.source_type,
@@ -76,7 +78,9 @@ def search_assets(
     name: str = None,
     type: str = None,
     data_type: str = None,
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    page_num: int = 1,
+    page_size: int = 10
 ):
     assets = []
     
@@ -96,16 +100,18 @@ def search_assets(
                         rows=0 
                     ))
     
-    synced_tables = session.exec(select(SyncedTable)).all()
+    synced_tables = session.exec(select(SyncedTable).offset((page_num-1)*page_size).limit(page_size)).all()
     for table in synced_tables:
-        asset_type = "table"
+        asset_type = "mysql"
         if table.source_type == "minio":
-            asset_type = "bucket"
+            asset_type = "minio"
+        if table.source_type == "clickhouse":
+            asset_type = "clickhouse"
             
         assets.append(DataAsset(
-             id=table.id,
-             name=table.table_name,
-             type=asset_type,
+            id=table.id,
+            name=table.table_name,
+            type=asset_type,
             path=table.table_name, 
             size="-",
             source=table.source_type,
@@ -124,7 +130,15 @@ def search_assets(
     if name:
         active_filters.append({"field": "name", "value": name, "match_type": "contains"})
     if type:
-        active_filters.append({"field": "type", "value": type, "match_type": "exact"})
+        # Map frontend type values to display names
+        type_display = type
+        if type == "mysql":
+            type_display = "MySQL"
+        elif type == "clickhouse":
+            type_display = "ClickHouse"
+        elif type == "bucket":
+            type_display = "MinIO(S3)"
+        active_filters.append({"field": "type", "value": type_display, "match_type": "exact"})
     if data_type:
         active_filters.append({"field": "data_type", "value": data_type, "match_type": "exact"})
     

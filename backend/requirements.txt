@@ -1,11 +1,13 @@
 fastapi
 uvicorn
 sqlmodel
-pyspark
+# pyspark
 pandas
 python-multipart
 requests
 pymysql
+cryptography
 boto3
 clickhouse-driver
 pydantic-settings
+openpyxl

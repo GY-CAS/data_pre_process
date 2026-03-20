@@ -4,10 +4,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 def find_env_file() -> Path:
     current = Path(__file__).resolve()
+    env_files = [".env.docker", ".env"]
     for parent in [current.parent] + list(current.parents):
-        env_path = parent / ".env"
-        if env_path.exists():
-            return env_path
+        for env_file in env_files:
+            env_path = parent / env_file
+            if env_path.exists():
+                return env_path
     return Path(".env")
 
 ENV_FILE_PATH = find_env_file()

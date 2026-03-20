@@ -1,26 +1,30 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-ARG BACKEND_SERVICE_URL=http://127.0.0.1:8000
-ENV BACKEND_SERVICE_URL=${BACKEND_SERVICE_URL}
-ENV VITE_API_BASE_URL=${BACKEND_SERVICE_URL}
-
-RUN apk add --no-cache libc6-compat
-
-COPY package.json package-lock.json* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 
 RUN npm ci --legacy-peer-deps
 
-COPY . .
+COPY frontend .
 
 RUN npm run build
 
-ENV NODE_ENV=production
+FROM node:20-alpine
+
+RUN apk add --no-cache curl bash
+
+WORKDIR /app
+
+COPY --from=builder /app/dist /app/dist
+
+COPY docker/frontend-server.js /app/
+COPY docker/entrypoint.sh /entrypoint.sh
+
+RUN npm install http-proxy-middleware
+
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 13000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:13000/ || exit 1
-
-CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0", "--port", "13000"]
+ENTRYPOINT ["/entrypoint.sh"]

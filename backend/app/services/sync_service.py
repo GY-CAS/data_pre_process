@@ -1,3 +1,4 @@
+from venv import logger
 import pandas as pd
 import json
 import time
@@ -71,6 +72,9 @@ def run_sync_task(task_id: int):
                         aws_access_key_id=settings.MINIO_ACCESS_KEY,
                         aws_secret_access_key=settings.MINIO_SECRET_KEY
                     )
+                    logger.info(f"MinIO!!!{settings.MINIO_ENDPOINT}")
+                    logger.info(f"MinIO!!!{settings.MINIO_ACCESS_KEY}")
+                    logger.info(f"MinIO!!!{settings.MINIO_SECRET_KEY}")
                     
                     # Validate and normalize bucket name
                     import re
